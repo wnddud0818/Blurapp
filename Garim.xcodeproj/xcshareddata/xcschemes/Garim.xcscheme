@@ -12,6 +12,9 @@
       <TestableReference skipped="NO">
         <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="2F0324083D2ABFF081DCA343" BuildableName="GarimTests.xctest" BlueprintName="GarimTests" ReferencedContainer="container:Garim.xcodeproj" />
       </TestableReference>
+      <TestableReference skipped="NO">
+        <BuildableReference BuildableIdentifier="primary" BlueprintIdentifier="781FD5DCA9D74444B520A60A" BuildableName="GarimUITests.xctest" BlueprintName="GarimUITests" ReferencedContainer="container:Garim.xcodeproj" />
+      </TestableReference>
     </Testables>
   </TestAction>
   <LaunchAction buildConfiguration="Debug" selectedDebuggerIdentifier="Xcode.DebuggerFoundation.Debugger.LLDB" selectedLauncherIdentifier="Xcode.DebuggerFoundation.Launcher.LLDB" launchStyle="0" useCustomWorkingDirectory="NO" ignoresPersistentStateOnLaunch="NO" debugDocumentVersioning="YES" allowLocationSimulation="YES">

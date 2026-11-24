@@ -47,7 +47,7 @@ struct PhotoCanvas: View {
                         Button("미리보기 다시 만들기") { editor.refresh() }.buttonStyle(.borderedProminent)
                     }
                 }
-                .clipShape(RoundedRectangle(cornerRadius: 14))
+                .accessibilityIdentifier("canvas")
             }
         }
     }
@@ -82,7 +82,7 @@ struct PhotoCanvas: View {
             Text("\(index + 1)").font(.caption2.bold()).monospacedDigit()
                 .foregroundStyle(Palette.ink)
                 .padding(.horizontal, 6).padding(.vertical, 3)
-                .background(kept ? Palette.lime : Color.white, in: Capsule())
+                .background(kept ? Palette.marker : Color.white, in: Capsule())
                 .position(x: subject.center.x * size.width, y: subject.center.y * size.height)
                 .allowsHitTesting(false)
                 .accessibilityHidden(true)
@@ -109,12 +109,12 @@ private struct AreaMark: View {
         Button(action: toggle) {
             ZStack(alignment: .topLeading) {
                 Rectangle().fill(Color.clear)
-                Rectangle().strokeBorder(area.active ? Palette.lime : .white,
+                Rectangle().strokeBorder(area.active ? Palette.marker : .white,
                                          style: StrokeStyle(lineWidth: 2, dash: area.active ? [] : [5, 3]))
                 if rect.width >= 22 && rect.height >= 22 {
                     Text("\(number)").font(.caption2.bold()).monospacedDigit()
                         .foregroundStyle(Palette.ink).padding(3)
-                        .background(area.active ? Palette.lime : .white)
+                        .background(area.active ? Palette.marker : .white)
                 }
             }
             .contentShape(Rectangle())
@@ -135,8 +135,8 @@ struct ManualMaskOverlay: View {
         Color.clear.contentShape(Rectangle())
             .overlay(alignment: .topLeading) {
                 if let draft {
-                    Rectangle().fill(Palette.lime.opacity(0.3))
-                        .overlay(Rectangle().strokeBorder(Palette.lime, lineWidth: 2))
+                    Rectangle().fill(Palette.marker.opacity(0.3))
+                        .overlay(Rectangle().strokeBorder(Palette.marker, lineWidth: 2))
                         .frame(width: draft.width, height: draft.height)
                         .position(x: draft.midX, y: draft.midY)
                         .allowsHitTesting(false)

@@ -58,6 +58,12 @@
 			path = MaskTests.swift;
 			sourceTree = "<group>";
 		};
+		CE07BB90739D4BE6850B48E0 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = WorkspaceTests.swift;
+			sourceTree = "<group>";
+		};
 		AD100DAD42B4C42891F6122B = {
 			isa = PBXFileReference;
 			lastKnownFileType = folder.assetcatalog;
@@ -88,6 +94,14 @@
 			sourceTree = "<group>";
 			path = GarimTests;
 		};
+		26FE8C5A4B894464A28C661C = {
+			isa = PBXGroup;
+			children = (
+				CE07BB90739D4BE6850B48E0,
+			);
+			sourceTree = "<group>";
+			path = GarimUITests;
+		};
 		59774C4F620BF8A0D1CE7D71 = {
 			isa = PBXFileReference;
 			explicitFileType = wrapper.application;
@@ -102,11 +116,19 @@
 			path = GarimTests.xctest;
 			sourceTree = BUILT_PRODUCTS_DIR;
 		};
+		84524F5253594C70AF22D9CB = {
+			isa = PBXFileReference;
+			explicitFileType = wrapper.cfbundle;
+			includeInIndex = 0;
+			path = GarimUITests.xctest;
+			sourceTree = BUILT_PRODUCTS_DIR;
+		};
 		0E534C008DF5F8647F75F1DD = {
 			isa = PBXGroup;
 			children = (
 				59774C4F620BF8A0D1CE7D71,
 				D9C43F1972B1F9B7E61C71EE,
+				84524F5253594C70AF22D9CB,
 			);
 			sourceTree = "<group>";
 			name = Products;
@@ -116,6 +138,7 @@
 			children = (
 				8499EB2B512BB071AE91C4D0,
 				7B60ECE162925F88107B6559,
+				26FE8C5A4B894464A28C661C,
 				0E534C008DF5F8647F75F1DD,
 			);
 			sourceTree = "<group>";
@@ -172,8 +195,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 2;
-				MARKETING_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -198,8 +221,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 2;
-				MARKETING_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -233,12 +256,33 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 2;
-				MARKETING_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.tests;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Garim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Garim";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+			};
+		};
+		AF067A29C19A43868A65F94B = {
+			isa = XCBuildConfiguration;
+			name = Debug;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
+				SUPPORTS_MACCATALYST = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.uitests;
+				TEST_TARGET_NAME = Garim;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -255,12 +299,33 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 2;
-				MARKETING_VERSION = 1.1;
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.tests;
 				BUNDLE_LOADER = "$(TEST_HOST)";
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Garim.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/Garim";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+			};
+		};
+		07A7719200BC4FA48FF4C813 = {
+			isa = XCBuildConfiguration;
+			name = Release;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				GENERATE_INFOPLIST_FILE = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				CURRENT_PROJECT_VERSION = 3;
+				MARKETING_VERSION = 1.2.0;
+				SUPPORTS_MACCATALYST = NO;
+				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.uitests;
+				TEST_TARGET_NAME = Garim;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
@@ -273,6 +338,15 @@
 			buildConfigurations = (
 				4429339474D012889F935F7C,
 				D0476C83AE0F7FF868718601,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		175CEDA09F1E4BC9B41A2197 = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AF067A29C19A43868A65F94B,
+				07A7719200BC4FA48FF4C813,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
@@ -364,14 +438,30 @@
 			remoteGlobalIDString = A637FE7939C817619B269742;
 			remoteInfo = Garim;
 		};
+		3A404BA280A94F80B1958998 = {
+			isa = PBXContainerItemProxy;
+			containerPortal = B1B232BA639823723ED1C903;
+			proxyType = 1;
+			remoteGlobalIDString = A637FE7939C817619B269742;
+			remoteInfo = Garim;
+		};
 		2FFBB5C332EC7D4B02482BEA = {
 			isa = PBXTargetDependency;
 			target = A637FE7939C817619B269742;
 			targetProxy = 44F4EA83B2A8FF3A90BFC936;
 		};
+		25B3D1A7620F425CA28169DB = {
+			isa = PBXTargetDependency;
+			target = A637FE7939C817619B269742;
+			targetProxy = 3A404BA280A94F80B1958998;
+		};
 		EFA8E132FC629CE196B9EC23 = {
 			isa = PBXBuildFile;
 			fileRef = A10923C854E2D8D63100172A;
+		};
+		B12ED094DCCD4C0FACB8CE03 = {
+			isa = PBXBuildFile;
+			fileRef = CE07BB90739D4BE6850B48E0;
 		};
 		8FDF82CDA91A4BE93F2FCDC6 = {
 			isa = PBXSourcesBuildPhase;
@@ -381,13 +471,33 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		DBFC5A6787AE4CE9B998B0BA = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B12ED094DCCD4C0FACB8CE03,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0B3B68B6756FBA4448663B89 = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = ();
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A54E56A6B09643DEB365F8DA = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		0F4AB9A153FD460E00C29C03 = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = ();
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		5590ED2A4F80435E8536B6E6 = {
 			isa = PBXResourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = ();
@@ -409,6 +519,23 @@
 			productName = GarimTests;
 			productReference = D9C43F1972B1F9B7E61C71EE;
 			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		781FD5DCA9D74444B520A60A = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 175CEDA09F1E4BC9B41A2197;
+			buildPhases = (
+				DBFC5A6787AE4CE9B998B0BA,
+				A54E56A6B09643DEB365F8DA,
+				5590ED2A4F80435E8536B6E6,
+			);
+			buildRules = ();
+			dependencies = (
+				25B3D1A7620F425CA28169DB,
+			);
+			name = GarimUITests;
+			productName = GarimUITests;
+			productReference = 84524F5253594C70AF22D9CB;
+			productType = "com.apple.product-type.bundle.ui-testing";
 		};
 		B1B232BA639823723ED1C903 = {
 			isa = PBXProject;
@@ -441,6 +568,7 @@
 			targets = (
 				A637FE7939C817619B269742,
 				2F0324083D2ABFF081DCA343,
+				781FD5DCA9D74444B520A60A,
 			);
 		};
 	};

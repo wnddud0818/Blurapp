@@ -84,6 +84,11 @@ final class Editor: ObservableObject {
     // MARK: - Batch
 
     func load(_ items: [PhotosPickerItem], replacing: Bool) async {
+        await load(items, replacing: replacing) { try await $0.loadTransferable(type: Data.self) }
+    }
+
+    /// Imports one original at a time, including when Photos has to fetch it from iCloud.
+    func load<Item>(_ items: [Item], replacing: Bool, read: (Item) async throws -> Data?) async {
         guard !busy, !items.isEmpty else { return }
         let room = replacing ? Self.selectionLimit : Self.selectionLimit - pages.count
         let picked = Array(items.prefix(max(0, room)))
@@ -101,7 +106,7 @@ final class Editor: ObservableObject {
         for item in picked {
             if Task.isCancelled { break }
             do {
-                guard let data = try await item.loadTransferable(type: Data.self) else { throw PhotoError.unreadable }
+                guard let data = try await read(item) else { throw PhotoError.unreadable }
                 if bytes + data.count > Self.byteLimit {
                     tooLarge += 1
                 } else {
@@ -145,6 +150,13 @@ final class Editor: ObservableObject {
         previewID = nil
         overlay = nil
         refresh()
+    }
+
+    func openSample() async {
+        guard !busy, pages.isEmpty, let data = FieldStudy.data else { return }
+        style = MaskStyle()
+        await load([data], replacing: true) { $0 }
+        addArea(MaskRegion(box: FieldStudy.plate, manual: true))
     }
 
     func select(_ id: UUID) {

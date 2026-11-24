@@ -1,3 +1,4 @@
+import Photos
 import CoreImage
 import ImageIO
 import UniformTypeIdentifiers
@@ -258,5 +259,71 @@ final class MaskTests: XCTestCase {
 
     private func largestGap(_ a: [UInt8], _ b: [UInt8]) -> Int {
         zip(a, b).map { abs(Int($0) - Int($1)) }.max() ?? 0
+    }
+}
+
+@MainActor
+final class BatchEditingTests: XCTestCase {
+    private func settle(_ editor: Editor) async throws {
+        let deadline = Date().addingTimeInterval(12)
+        while editor.rendering && Date() < deadline {
+            try await Task.sleep(nanoseconds: 30_000_000)
+        }
+        XCTAssertFalse(editor.rendering)
+        XCTAssertNotNil(editor.preview)
+    }
+
+    func testAppendReplaceFailureAndKeepReview() async throws {
+        let editor = Editor()
+        let photo = try XCTUnwrap(FieldStudy.data)
+        await editor.load([photo, photo], replacing: true) { $0 }
+        let ids = editor.pages.map(\.id)
+        XCTAssertEqual(ids.count, 2)
+        editor.setMode(.keep)
+        try await settle(editor)
+        XCTAssertEqual(editor.unreviewedCount, 1)
+        XCTAssertEqual(editor.unsavedCount, 1)
+        editor.select(ids[1])
+        try await settle(editor)
+        XCTAssertEqual(editor.unsavedCount, 2)
+        await editor.load([photo], replacing: false) { $0 }
+        XCTAssertEqual(editor.pages.count, 3)
+        let third = try XCTUnwrap(editor.currentID)
+        await editor.load([Data()], replacing: true) { $0 }
+        XCTAssertNotNil(editor.notice)
+        XCTAssertEqual(editor.currentID, third)
+        XCTAssertEqual(editor.pages.count, 3)
+        editor.remove(third)
+        XCTAssertEqual(editor.currentID, ids[1])
+        editor.remove(ids[0])
+        editor.remove(ids[1])
+        XCTAssertNil(editor.current)
+    }
+
+    func testSavingCopiesAndEditingAfterBatchSave() async throws {
+        // The test must never write into a developer's personal photo library.
+        #if targetEnvironment(simulator)
+        try XCTSkipUnless(PHPhotoLibrary.authorizationStatus(for: .addOnly) == .authorized,
+                          "Grant photos-add to app.garim.mobile in the test simulator.")
+        let editor = Editor()
+        let photo = try XCTUnwrap(FieldStudy.data)
+        await editor.load([photo, photo], replacing: true) { $0 }
+        for id in editor.pages.map(\.id) {
+            editor.select(id)
+            editor.addArea(MaskRegion(box: FieldStudy.plate, manual: true))
+        }
+        try await settle(editor)
+        XCTAssertEqual(editor.unsavedCount, 2)
+        await editor.saveCurrent()
+        XCTAssertEqual(editor.pages.filter(\.saved).count, 1)
+        await editor.saveAll()
+        XCTAssertTrue(editor.pages.allSatisfy(\.saved))
+        XCTAssertFalse(editor.canSaveAll)
+        editor.setEffect(.solid)
+        try await settle(editor)
+        XCTAssertEqual(editor.unsavedCount, 2)
+        #else
+        throw XCTSkip("Simulator photo library only.")
+        #endif
     }
 }

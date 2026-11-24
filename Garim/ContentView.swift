@@ -9,6 +9,19 @@ struct ContentView: View {
     @State private var replacing = true
     @Environment(\.horizontalSizeClass) private var widthClass
     @Environment(\.dynamicTypeSize) private var typeSize
+    private enum Tool: String, CaseIterable {
+        case region = "영역", effect = "효과", save = "저장"
+        var symbol: String {
+            switch self {
+            case .region: "viewfinder"
+            case .effect: "circle.lefthalf.filled"
+            case .save: "square.and.arrow.down"
+            }
+        }
+    }
+
+    @State private var tool = Tool.region
+    @State private var confirmClose = false
     @State private var drawing = false
     @State private var cleanPreview = false
     @Environment(\.openURL) private var openURL
@@ -21,11 +34,15 @@ struct ContentView: View {
             } else if let page = editor.current {
                 edit(page)
             } else {
-                WelcomeView(columns: usesColumns, limit: Editor.selectionLimit) { choose(replacing: true) }
+                GeometryReader { geo in
+                    WelcomeView(columns: usesColumns(geo.size), limit: Editor.selectionLimit,
+                                choosePhoto: { choose(replacing: true) },
+                                openSample: { Task { await editor.openSample() } })
+                }
             }
         }
         .foregroundStyle(Palette.ink)
-        .tint(Palette.moss)
+        .tint(Palette.accent)
         .preferredColorScheme(.light)
         .photosPicker(isPresented: $choosingPhotos, selection: $selections,
                       maxSelectionCount: pickerLimit, selectionBehavior: .ordered, matching: .images,
@@ -37,7 +54,10 @@ struct ContentView: View {
             await editor.load(selections, replacing: replacing)
             if !Task.isCancelled { selections = [] }
         }
-        .onChange(of: editor.currentID) { drawing = false }
+        .onChange(of: editor.currentID) {
+            drawing = false
+            if editor.currentID == nil { tool = .region; cleanPreview = false }
+        }
         .onChange(of: editor.style.mode) { drawing = false }
         .alert("알림", isPresented: Binding(
             get: { editor.notice != nil },
@@ -52,8 +72,8 @@ struct ContentView: View {
         } message: { Text(editor.notice ?? "") }
     }
 
-    private var usesColumns: Bool {
-        widthClass == .regular && !typeSize.isAccessibilitySize
+    private func usesColumns(_ size: CGSize) -> Bool {
+        size.width >= 620 && (widthClass == .regular || size.width > size.height) && !typeSize.isAccessibilitySize
     }
 
     private var pickerLimit: Int {
@@ -67,72 +87,125 @@ struct ContentView: View {
 
     private func edit(_ page: PhotoPage) -> some View {
         GeometryReader { window in
-            if usesColumns {
-                VStack(alignment: .leading, spacing: 14) {
-                    editorHeader
-                    HStack(alignment: .top, spacing: 20) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            strip
-                            previewControls
-                            canvas
-                        }
-                        Divider()
-                        ScrollView {
-                            inspector(page)
-                        }
-                        .frame(width: min(360, window.size.width * 0.38))
+            VStack(spacing: 0) {
+                editorHeader
+                if cleanPreview {
+                    stage
+                } else if #available(iOS 27.1, *),
+                          window.reservedRegions(kind: .division).contains(where: \.isActive) {
+                    ArrangementView {
+                        stage
+                    } secondary: {
+                        controls(page)
                     }
-                }
-                .padding(18)
-            } else {
-                ScrollViewReader { scroll in
+                    .arrangementViewStyle(.split)
+                } else if usesColumns(window.size) {
+                    HStack(spacing: 0) {
+                        stage
+                        controls(page).frame(width: min(340, window.size.width * 0.40))
+                    }
+                } else if typeSize.isAccessibilitySize || window.size.height < 460 {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 16) {
-                            editorHeader
-                            strip
-                            previewControls
-                            canvas
-                                .frame(height: max(180, window.size.height * 0.48))
-                                .id("photoCanvas")
-                            inspector(page)
+                        VStack(spacing: 0) {
+                            stage.frame(height: max(230, window.size.height * 0.45))
+                            toolBar
+                            toolContent(page)
                         }
-                        .padding(16)
                     }
-                    .onChange(of: drawing, initial: true) { _, active in
-                        if active { scroll.scrollTo("photoCanvas", anchor: .center) }
-                    }
+                } else {
+                    stage
+                    controls(page).frame(height: min(300, window.size.height * 0.40))
                 }
             }
         }
         .disabled(editor.saving)
+        .confirmationDialog("편집 중인 사진을 모두 닫을까요?", isPresented: $confirmClose, titleVisibility: .visible) {
+            Button("모두 닫기", role: .destructive) { editor.close() }
+            Button("취소", role: .cancel) { }
+        }
+    }
+
+    private var stage: some View {
+        VStack(spacing: 0) {
+            canvas
+            previewControls
+                .font(.subheadline)
+                .foregroundStyle(.white)
+                .padding(.horizontal, 16)
+                .tint(.white)
+            if editor.pages.count > 1 && !cleanPreview {
+                strip.padding(.horizontal, 12).padding(.bottom, 8)
+            }
+        }
+        .background(Palette.ink, ignoresSafeAreaEdges: [])
+    }
+
+    private func controls(_ page: PhotoPage) -> some View {
+        VStack(spacing: 0) {
+            toolBar
+            ScrollView { toolContent(page) }
+        }
+        .frame(maxHeight: .infinity, alignment: .top)
+    }
+
+    private var toolBar: some View {
+        HStack(spacing: 0) {
+            ForEach(Tool.allCases, id: \.self) { item in
+                Button {
+                    tool = item
+                    drawing = false
+                } label: {
+                    Label(item.rawValue, systemImage: item.symbol)
+                        .font(.subheadline.weight(.semibold))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .foregroundStyle(item == tool ? Palette.accent : Palette.secondary)
+                        .overlay(alignment: .bottom) {
+                            Rectangle().fill(item == tool ? Palette.accent : Palette.line)
+                                .frame(height: item == tool ? 2 : 1)
+                        }
+                }
+                .accessibilityIdentifier("tool-\(item.rawValue)")
+                .accessibilityAddTraits(item == tool ? .isSelected : [])
+            }
+        }.buttonStyle(.plain)
+    }
+
+    private func toolContent(_ page: PhotoPage) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            switch tool {
+            case .region:
+                modeSection
+                targets(page)
+            case .effect: effectSection
+            case .save: saveSection
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(16)
     }
 
     private var editorHeader: some View {
-        HStack(alignment: .firstTextBaseline) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text("사진 가리기").font(.title2.bold()).accessibilityAddTraits(.isHeader)
-                if editor.pages.count > 1, let index = editor.currentIndex {
-                    Text("\(editor.pages.count)장 중 \(index + 1)번째")
-                        .font(.subheadline).foregroundStyle(Palette.moss)
-                }
-            }
+        HStack {
+            Text("가림").font(.title2.weight(.black))
+            Text("\((editor.currentIndex ?? 0) + 1) / \(editor.pages.count)")
+                .font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
             Spacer()
             Menu {
                 Button { choose(replacing: false) } label: {
                     Label("사진 추가", systemImage: "plus")
-                }
-                .disabled(!editor.canAddPhotos)
+                }.disabled(!editor.canAddPhotos)
                 Button { choose(replacing: true) } label: {
                     Label("새로 고르기", systemImage: "photo.on.rectangle")
                 }
-                Button(role: .destructive) { editor.close() } label: {
+                Button(role: .destructive) { confirmClose = true } label: {
                     Label("모두 닫기", systemImage: "xmark")
                 }
             } label: {
                 Label("사진", systemImage: "photo.stack")
-                    .font(.subheadline.weight(.semibold)).padding(.vertical, 9)
-            }
+                    .font(.subheadline.weight(.semibold)).frame(minHeight: 44)
+            }.accessibilityIdentifier("photos-menu")
         }
+        .padding(.horizontal, 16)
     }
 
     private var strip: some View {
@@ -144,13 +217,13 @@ struct ContentView: View {
             Text(statusText).font(.subheadline.weight(.semibold))
             Spacer()
             if drawing {
-                Button("취소") { drawing = false }
+                Button("취소") { drawing = false }.frame(minHeight: 44)
             } else {
                 Button { cleanPreview.toggle() } label: {
                     Label(cleanPreview ? "편집 보기" : "결과 보기",
                           systemImage: cleanPreview ? "viewfinder" : "eye")
                 }
-                .font(.subheadline)
+                .font(.subheadline).frame(minHeight: 44)
             }
         }
     }
@@ -165,29 +238,13 @@ struct ContentView: View {
         PhotoCanvas(editor: editor, drawing: $drawing, cleanPreview: cleanPreview)
     }
 
-    private func inspector(_ page: PhotoPage) -> some View {
-        VStack(alignment: .leading, spacing: 22) {
-            if !cleanPreview {
-                modeSection
-                targets(page)
-                effectSection
-            }
-            saveSection
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
     // MARK: - Mode and targets
 
     private var modeSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("가리는 방식").font(.headline)
-            Picker("가리는 방식", selection: Binding(get: { editor.style.mode }, set: { editor.setMode($0) })) {
-                ForEach(MaskMode.allCases) { Text($0.rawValue).tag($0) }
-            }
-            .pickerStyle(.segmented)
-            Text(editor.style.mode.summary).font(.subheadline).foregroundStyle(Palette.moss)
+        Picker("가리는 방식", selection: Binding(get: { editor.style.mode }, set: { editor.setMode($0) })) {
+            ForEach(MaskMode.allCases) { Text($0.rawValue).tag($0) }
         }
+        .pickerStyle(.segmented)
     }
 
     private func targets(_ page: PhotoPage) -> some View {
@@ -213,9 +270,9 @@ struct ContentView: View {
     @ViewBuilder private func coverTargets(_ page: PhotoPage) -> some View {
         if page.regions.isEmpty {
             hint(page.faceDetectionFailed ? "자동 감지가 어려운 사진이에요. ‘직접 추가’로 영역을 그려 주세요." :
-                    "찾은 얼굴이 없어요. ‘직접 추가’로 원하는 부분을 가릴 수 있어요.")
+                    "얼굴을 찾지 못했습니다. 직접 영역을 그려주세요.")
         } else {
-            hint("남길 얼굴을 누르면 가림이 풀려요.")
+            hint("영역을 눌러 가림을 켜거나 끄세요.")
             TargetChips(targets: coverChips(page), onValue: "가림", offValue: "원본", toggle: toggle)
         }
     }
@@ -227,7 +284,7 @@ struct ContentView: View {
                 ProgressView()
                 Text("사람과 물체를 찾고 있어요").font(.subheadline)
             }
-            .foregroundStyle(Palette.moss)
+            .foregroundStyle(Palette.secondary)
         } else if subjects.isEmpty && page.keepAreas.isEmpty {
             if case .failed = page.analysis {
                 hint("사람이나 물체를 자동으로 찾지 못했어요. ‘직접 추가’로 남길 영역을 그려 주세요. 지금은 사진 전체가 가려져요.")
@@ -264,7 +321,7 @@ struct ContentView: View {
     }
 
     private func hint(_ text: String) -> some View {
-        Text(text).font(.subheadline).foregroundStyle(Palette.moss)
+        Text(text).font(.subheadline).foregroundStyle(Palette.secondary)
     }
 
     private func toggle(_ kind: Target.Kind) {
@@ -278,7 +335,7 @@ struct ContentView: View {
 
     private var effectSection: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("효과").font(.headline)
+            Text("가림 효과").font(.headline)
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(alignment: .top, spacing: 12) {
                     ForEach(MaskEffect.allCases) { effect in
@@ -289,7 +346,7 @@ struct ContentView: View {
                                     .frame(width: 60, height: 46)
                                     .clipShape(RoundedRectangle(cornerRadius: 10))
                                     .overlay(RoundedRectangle(cornerRadius: 10)
-                                        .strokeBorder(selected ? Palette.ink : Palette.line, lineWidth: selected ? 3 : 1))
+                                        .strokeBorder(selected ? Palette.marker : Palette.line, lineWidth: selected ? 3 : 1))
                                 Text(effect.rawValue)
                                     .font(.caption.weight(selected ? .bold : .regular))
                                     .lineLimit(1)
@@ -310,7 +367,7 @@ struct ContentView: View {
             }
             if editor.pages.count > 1 {
                 Text("가리는 방식·효과·강도는 모든 사진에 똑같이 적용돼요.")
-                    .font(.footnote).foregroundStyle(Palette.moss)
+                    .font(.footnote).foregroundStyle(Palette.secondary)
             }
         }
     }
@@ -358,8 +415,8 @@ struct ContentView: View {
                 Text("골라서 남기기에서는 열어서 남길 대상을 확인한 사진만 모두 저장에 들어가요. 아직 확인하지 않은 사진 \(editor.unreviewedCount)장")
                     .font(.footnote.weight(.semibold)).foregroundStyle(Palette.ink)
             }
-            Text("JPEG · 긴 변 최대 4,096픽셀 · 원본은 그대로 두고 새 사진으로 저장해요")
-                .font(.footnote).foregroundStyle(Palette.moss)
+            Text("사진 보관함에 새 JPEG로 저장합니다. 긴 변 최대 4,096픽셀.")
+                .font(.footnote).foregroundStyle(Palette.secondary)
         }
     }
 
@@ -407,7 +464,7 @@ private struct TargetChips: View {
                     Button { toggle(target.kind) } label: {
                         Label(target.name, systemImage: target.on ? "checkmark.circle.fill" : "circle")
                             .font(.subheadline.weight(.medium)).padding(.horizontal, 13).padding(.vertical, 10)
-                            .background(target.on ? Palette.lime : Color.white, in: Capsule())
+                            .background(target.on ? Palette.marker : Color.white, in: Capsule())
                     }
                     .buttonStyle(.plain)
                     .accessibilityValue(target.on ? onValue : offValue)
@@ -430,15 +487,15 @@ private struct PhotoStrip: View {
                         let selected = page.id == editor.currentID
                         Button { editor.select(page.id) } label: {
                             Image(decorative: page.thumbnail, scale: 1).resizable().scaledToFill()
-                                .frame(width: 60, height: 60)
+                                .frame(width: 44, height: 44)
                                 .clipShape(RoundedRectangle(cornerRadius: 11))
                                 .overlay(RoundedRectangle(cornerRadius: 11)
-                                    .strokeBorder(selected ? Palette.ink : Palette.line, lineWidth: selected ? 3 : 1))
+                                    .strokeBorder(selected ? Palette.marker : Palette.line, lineWidth: selected ? 3 : 1))
                                 .overlay(alignment: .bottomTrailing) {
                                     if page.saved {
                                         Image(systemName: "checkmark.circle.fill")
                                             .symbolRenderingMode(.palette)
-                                            .font(.subheadline).foregroundStyle(Palette.ink, Palette.lime)
+                                            .font(.subheadline).foregroundStyle(Palette.ink, Palette.marker)
                                             .padding(3)
                                     }
                                 }
@@ -459,7 +516,7 @@ private struct PhotoStrip: View {
                         Button(action: add) {
                             Image(systemName: "plus")
                                 .font(.title3.weight(.semibold))
-                                .frame(width: 60, height: 60)
+                                .frame(width: 44, height: 44)
                                 .background(Color.white, in: RoundedRectangle(cornerRadius: 11))
                                 .overlay(RoundedRectangle(cornerRadius: 11)
                                     .strokeBorder(Palette.line, style: StrokeStyle(lineWidth: 1, dash: [4, 3])))
@@ -494,7 +551,7 @@ private struct ImportProgressView: View {
                  ? "사진 \(min(progress.done + 1, progress.total))/\(progress.total) 준비 중"
                  : "사진을 준비하고 있어요")
                 .font(.headline)
-            Text("얼굴을 찾고 있어요").font(.subheadline).foregroundStyle(Palette.moss)
+            Text("얼굴을 찾고 있어요").font(.subheadline).foregroundStyle(Palette.secondary)
         }
         .padding(24)
         .accessibilityElement(children: .combine)
@@ -505,7 +562,7 @@ private struct ImportProgressView: View {
 private struct EffectSwatch: View {
     let effect: MaskEffect
 
-    private static let tones: [Color] = [0x51443A, 0x84634E, 0xA5795F, 0xC89470, 0xDEAA84, 0xB48363].map { hex in
+    private static let tones: [Color] = [0x242421, 0x555451, 0x82807B, 0xABAAA6, 0xE1DFD9, 0x9B9995].map { hex in
         Color(red: Double((hex >> 16) & 255) / 255, green: Double((hex >> 8) & 255) / 255,
               blue: Double(hex & 255) / 255)
     }
