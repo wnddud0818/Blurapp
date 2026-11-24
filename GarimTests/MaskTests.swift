@@ -25,6 +25,24 @@ final class MaskTests: XCTestCase {
         XCTAssertNil(MaskRegion.drawn(from: a, to: a, in: size))
     }
 
+    func testManualRegionKeepsItsExportPixelsAfterDisplayResize() throws {
+        let source = CGRect(x: 0, y: 0, width: 3072, height: 4096)
+        let region = try XCTUnwrap(MaskRegion.drawn(from: CGPoint(x: 30, y: 40),
+                                                    to: CGPoint(x: 150, y: 200),
+                                                    in: CGSize(width: 240, height: 320)))
+        let exported = region.coreImageRect(in: source)
+        XCTAssertEqual(exported, CGRect(x: 384, y: 1536, width: 1536, height: 2048))
+
+        // Fitted portrait image sizes on an outer display, inner display and narrow split window.
+        for size in [CGSize(width: 240, height: 320), CGSize(width: 360, height: 480),
+                     CGSize(width: 156, height: 208)] {
+            let rect = region.displayRect(in: size)
+            let roundTrip = try XCTUnwrap(MaskRegion.drawn(from: CGPoint(x: rect.minX, y: rect.minY),
+                                                           to: CGPoint(x: rect.maxX, y: rect.maxY), in: size))
+            XCTAssertEqual(roundTrip.coreImageRect(in: source), exported)
+        }
+    }
+
     func testPortraitExportAndSelectiveMasking() async throws {
         let width = 96, height = 64
         let gray = CGColorSpaceCreateDeviceGray()

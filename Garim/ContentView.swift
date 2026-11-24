@@ -5,6 +5,9 @@ import UIKit
 struct ContentView: View {
     @StateObject private var editor = Editor()
     @State private var selection: PhotosPickerItem?
+    @State private var choosingPhoto = false
+    @Environment(\.horizontalSizeClass) private var widthClass
+    @Environment(\.dynamicTypeSize) private var typeSize
     @State private var drawing = false
     @State private var cleanPreview = false
     @Environment(\.openURL) private var openURL
@@ -21,12 +24,14 @@ struct ContentView: View {
             } else if let doc = editor.document {
                 edit(doc)
             } else {
-                WelcomeView(selection: $selection)
+                WelcomeView(columns: usesColumns) { choosingPhoto = true }
             }
         }
         .foregroundStyle(Palette.ink)
         .tint(Palette.moss)
         .preferredColorScheme(.light)
+        .photosPicker(isPresented: $choosingPhoto, selection: $selection, matching: .images,
+                     preferredItemEncoding: .current, photoLibrary: .shared())
         .task(id: selection) {
             guard let item = selection else { return }
             drawing = false
@@ -47,56 +52,98 @@ struct ContentView: View {
         } message: { Text(editor.notice ?? "") }
     }
 
+    private var usesColumns: Bool {
+        widthClass == .regular && !typeSize.isAccessibilitySize
+    }
+
     private func edit(_ document: PhotoDocument) -> some View {
-        GeometryReader { proxy in
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack {
-                        Brand()
-                        Spacer()
-                        PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .current) {
-                            Label("사진 바꾸기", systemImage: "photo.on.rectangle")
-                                .font(.subheadline.weight(.semibold)).padding(.vertical, 9)
+        GeometryReader { window in
+            if usesColumns {
+                VStack(alignment: .leading, spacing: 14) {
+                    editorHeader
+                    HStack(alignment: .top, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 10) {
+                            previewControls
+                            canvas
                         }
-                    }
-                    Text("얼굴 모자이크").font(.largeTitle.bold())
-                    HStack {
-                        Text(drawing ? "가릴 부분을 드래그하세요" : "가린 영역 \(editor.coveredCount)개")
-                            .font(.subheadline.weight(.semibold))
-                        Spacer()
-                        if !drawing {
-                            Button {
-                                cleanPreview.toggle()
-                            } label: {
-                                Label(cleanPreview ? "편집 보기" : "결과 보기",
-                                      systemImage: cleanPreview ? "viewfinder" : "eye")
-                            }
-                            .font(.subheadline)
+                        Divider()
+                        ScrollView {
+                            inspector(document)
                         }
+                        .frame(width: min(340, window.size.width * 0.36))
                     }
-                    PhotoCanvas(editor: editor, drawing: $drawing, cleanPreview: cleanPreview)
-                        .frame(height: min(480, max(230, proxy.size.height * 0.43)))
-                    if !cleanPreview {
-                        tools(document)
-                    }
-                    Button {
-                        Task { await editor.save() }
-                    } label: {
-                        PrimaryLabel(title: editor.saving ? "저장하는 중…" : (editor.saved ? "사진 앱에 저장됨" : "새 사진으로 저장"),
-                                     symbol: editor.saved ? "checkmark.circle.fill" : "square.and.arrow.down")
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!editor.canSave || drawing)
-                    .opacity(editor.canSave && !drawing || editor.saved ? 1 : 0.5)
-                    Text("JPEG · 긴 변 최대 4,096픽셀")
-                        .font(.footnote).foregroundStyle(Palette.moss)
                 }
-                .padding(20).frame(maxWidth: 700)
-                .frame(maxWidth: .infinity)
-                .disabled(editor.saving)
+                .padding(18)
+            } else {
+                ScrollViewReader { scroll in
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 16) {
+                            editorHeader
+                            previewControls
+                            canvas
+                                .frame(height: max(180, window.size.height * 0.48))
+                                .id("photoCanvas")
+                            inspector(document)
+                        }
+                        .padding(16)
+                    }
+                    .onChange(of: drawing, initial: true) { _, active in
+                        if active { scroll.scrollTo("photoCanvas", anchor: .center) }
+                    }
+                }
             }
-            .scrollDisabled(drawing)
         }
+        .disabled(editor.saving)
+    }
+
+    private var editorHeader: some View {
+        HStack {
+            Text("얼굴 모자이크").font(.title2.bold()).accessibilityAddTraits(.isHeader)
+            Spacer()
+            Button { choosingPhoto = true } label: {
+                Label("사진 바꾸기", systemImage: "photo.on.rectangle")
+                    .font(.subheadline.weight(.semibold)).padding(.vertical, 9)
+            }
+        }
+    }
+
+    private var previewControls: some View {
+        HStack {
+            Text(drawing ? "가릴 부분을 드래그하세요" : "가린 영역 \(editor.coveredCount)개")
+                .font(.subheadline.weight(.semibold))
+            Spacer()
+            if drawing {
+                Button("취소") { drawing = false }
+            } else {
+                Button { cleanPreview.toggle() } label: {
+                    Label(cleanPreview ? "편집 보기" : "결과 보기",
+                          systemImage: cleanPreview ? "viewfinder" : "eye")
+                }
+                .font(.subheadline)
+            }
+        }
+    }
+
+    private var canvas: some View {
+        PhotoCanvas(editor: editor, drawing: $drawing, cleanPreview: cleanPreview)
+    }
+
+    private func inspector(_ document: PhotoDocument) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            if !cleanPreview { tools(document) }
+            Button {
+                Task { await editor.save() }
+            } label: {
+                PrimaryLabel(title: editor.saving ? "저장하는 중…" : (editor.saved ? "사진 앱에 저장됨" : "새 사진으로 저장"),
+                             symbol: editor.saved ? "checkmark.circle.fill" : "square.and.arrow.down")
+            }
+            .buttonStyle(.plain)
+            .disabled(!editor.canSave || drawing)
+            .opacity(editor.canSave && !drawing || editor.saved ? 1 : 0.5)
+            Text("JPEG · 긴 변 최대 4,096픽셀")
+                .font(.footnote).foregroundStyle(Palette.moss)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     @ViewBuilder private func tools(_ document: PhotoDocument) -> some View {
@@ -158,7 +205,6 @@ private struct PhotoCanvas: View {
     @ObservedObject var editor: Editor
     @Binding var drawing: Bool
     let cleanPreview: Bool
-    @State private var draft: CGRect?
 
     var body: some View {
         GeometryReader { geo in
@@ -175,7 +221,7 @@ private struct PhotoCanvas: View {
                         }
                         if !cleanPreview && !drawing && editor.preview != nil {
                             ForEach(Array(editor.regions.enumerated()), id: \.element.id) { index, region in
-                                let rect = region.box.applying(CGAffineTransform(scaleX: size.width, y: size.height))
+                                let rect = region.displayRect(in: size)
                                 Button { editor.toggle(region.id) } label: {
                                     ZStack(alignment: .topLeading) {
                                         Rectangle().fill(Color.clear)
@@ -196,26 +242,12 @@ private struct PhotoCanvas: View {
                             }
                         }
                         if drawing {
-                            Color.clear.contentShape(Rectangle())
-                                .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                                    .onChanged { value in
-                                        draft = CGRect(x: value.startLocation.x, y: value.startLocation.y,
-                                                       width: value.location.x - value.startLocation.x,
-                                                       height: value.location.y - value.startLocation.y).standardized
-                                    }
-                                    .onEnded { value in
-                                        draft = nil
-                                        if let region = MaskRegion.drawn(from: value.startLocation, to: value.location, in: size) {
-                                            editor.add(region)
-                                            drawing = false
-                                        }
-                                    })
-                            if let draft {
-                                Rectangle().fill(Palette.lime.opacity(0.3))
-                                    .overlay(Rectangle().strokeBorder(Palette.lime, lineWidth: 2))
-                                    .frame(width: draft.width, height: draft.height)
-                                    .position(x: draft.midX, y: draft.midY).allowsHitTesting(false)
+                            ManualMaskOverlay(imageSize: size) { region in
+                                editor.add(region)
+                                drawing = false
                             }
+                            // Touch locations belong to this image size for the entire stroke.
+                            .id([size.width, size.height])
                         }
                     }
                     .frame(width: size.width, height: size.height).clipped()
@@ -228,6 +260,34 @@ private struct PhotoCanvas: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14))
             }
         }
-        .onChange(of: drawing) { _, active in if !active { draft = nil } }
+    }
+}
+
+private struct ManualMaskOverlay: View {
+    let imageSize: CGSize
+    let add: (MaskRegion) -> Void
+    @GestureState private var draft: CGRect?
+
+    var body: some View {
+        Color.clear.contentShape(Rectangle())
+            .overlay(alignment: .topLeading) {
+                if let draft {
+                    Rectangle().fill(Palette.lime.opacity(0.3))
+                        .overlay(Rectangle().strokeBorder(Palette.lime, lineWidth: 2))
+                        .frame(width: draft.width, height: draft.height)
+                        .position(x: draft.midX, y: draft.midY)
+                        .allowsHitTesting(false)
+                }
+            }
+            .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                .updating($draft) { value, rect, _ in
+                    rect = CGRect(x: value.startLocation.x, y: value.startLocation.y,
+                                  width: value.translation.width, height: value.translation.height).standardized
+                }
+                .onEnded { value in
+                    if let region = MaskRegion.drawn(from: value.startLocation, to: value.location, in: imageSize) {
+                        add(region)
+                    }
+                })
     }
 }

@@ -31,6 +31,10 @@ struct MaskRegion: Identifiable, Equatable {
                           manual: true)
     }
 
+    func displayRect(in size: CGSize) -> CGRect {
+        box.applying(CGAffineTransform(scaleX: size.width, y: size.height))
+    }
+
     func coreImageRect(in extent: CGRect) -> CGRect {
         CGRect(x: extent.minX + box.minX * extent.width,
                y: extent.minY + (1 - box.maxY) * extent.height,

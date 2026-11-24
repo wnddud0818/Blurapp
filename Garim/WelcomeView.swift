@@ -1,8 +1,8 @@
-import PhotosUI
 import SwiftUI
 
 struct WelcomeView: View {
-    @Binding var selection: PhotosPickerItem?
+    let columns: Bool
+    let choosePhoto: () -> Void
     @State private var sampleMasked = true
 
     var body: some View {
@@ -14,46 +14,69 @@ struct WelcomeView: View {
                     Label("기기 내 처리", systemImage: "lock.fill")
                         .font(.caption.weight(.medium)).foregroundStyle(Palette.moss)
                 }
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("얼굴 모자이크").font(.system(.largeTitle, design: .rounded, weight: .heavy))
-                    Text("사진을 골라 가릴 얼굴과 남길 얼굴을 정하세요.")
-                        .font(.body).foregroundStyle(Palette.moss)
-                }
-                .padding(.top, 12)
-                VStack(spacing: 0) {
-                    Button { sampleMasked.toggle() } label: {
-                        PortraitSample(masked: sampleMasked)
-                            .aspectRatio(1.42, contentMode: .fit)
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityLabel("예시 얼굴 모자이크 전환")
-                    .accessibilityValue(sampleMasked ? "가림" : "원본")
-                    HStack {
-                        Text("사용 예시").font(.subheadline.bold())
-                        Spacer()
-                        Button { sampleMasked.toggle() } label: {
-                            Label(sampleMasked ? "원본 보기" : "가림 보기",
-                                  systemImage: sampleMasked ? "eye" : "eye.slash")
-                                .font(.subheadline.weight(.medium))
+                if columns {
+                    HStack(alignment: .center, spacing: 24) {
+                        sample
+                        VStack(alignment: .leading, spacing: 24) {
+                            introduction
+                            chooseButton
                         }
+                        .frame(maxWidth: .infinity)
                     }
-                    .padding(.horizontal, 16).padding(.vertical, 12)
-                    .background(.white.opacity(0.65))
-                }
-                .clipShape(RoundedRectangle(cornerRadius: 18))
-                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Palette.line, lineWidth: 1))
-                VStack(spacing: 12) {
-                    PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .current) {
-                        PrimaryLabel(title: "사진 선택하기", symbol: "photo.on.rectangle.angled")
-                    }
-                    .buttonStyle(.plain)
-                    Text("얼굴 감지와 모자이크는 아이폰에서 처리해요.")
-                        .font(.footnote).foregroundStyle(Palette.moss)
+                } else {
+                    introduction
+                    sample
+                    chooseButton
                 }
             }
-            .padding(22).frame(maxWidth: 570)
+            .padding(22)
+            .frame(maxWidth: columns ? .infinity : 570)
             .frame(maxWidth: .infinity)
         }
+    }
+
+    private var introduction: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("얼굴 모자이크").font(.system(.largeTitle, design: .rounded, weight: .heavy))
+            Text("사진을 골라 가릴 얼굴과 남길 얼굴을 정하세요.")
+                .font(.body).foregroundStyle(Palette.moss)
+        }
+    }
+
+    private var chooseButton: some View {
+        VStack(spacing: 12) {
+            Button(action: choosePhoto) {
+                PrimaryLabel(title: "사진 선택하기", symbol: "photo.on.rectangle.angled")
+            }
+            .buttonStyle(.plain)
+            Text("얼굴 감지와 모자이크는 아이폰에서 처리해요.")
+                .font(.footnote).foregroundStyle(Palette.moss)
+        }
+    }
+
+    private var sample: some View {
+        VStack(spacing: 0) {
+            Button { sampleMasked.toggle() } label: {
+                PortraitSample(masked: sampleMasked)
+                    .aspectRatio(1.42, contentMode: .fit)
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("예시 얼굴 모자이크 전환")
+            .accessibilityValue(sampleMasked ? "가림" : "원본")
+            HStack {
+                Text("사용 예시").font(.subheadline.bold())
+                Spacer()
+                Button { sampleMasked.toggle() } label: {
+                    Label(sampleMasked ? "원본 보기" : "가림 보기",
+                          systemImage: sampleMasked ? "eye" : "eye.slash")
+                        .font(.subheadline.weight(.medium))
+                }
+            }
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(.white.opacity(0.65))
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 18))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Palette.line, lineWidth: 1))
     }
 }
 
