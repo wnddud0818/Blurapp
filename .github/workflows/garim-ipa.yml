@@ -1,0 +1,59 @@
+name: Build Garim IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: ['build/garim-ipa-38290d9']
+
+permissions:
+  contents: read
+
+jobs:
+  package:
+    runs-on: xcode-27
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Build for physical iPhones
+        shell: bash
+        run: |
+          set -euo pipefail
+          for xcode in "$(xcode-select -p)" /Applications/Xcode*.app/Contents/Developer; do
+            export DEVELOPER_DIR="$xcode"
+            sdk="$(xcrun --sdk iphoneos --show-sdk-version 2>/dev/null)" || continue
+            if awk -F. '{ exit !(($1 > 27) || ($1 == 27 && $2 >= 1)) }' <<< "$sdk"; then
+              break
+            fi
+          done
+          xcrun --sdk iphoneos --show-sdk-version | awk -F. '{ exit !(($1 > 27) || ($1 == 27 && $2 >= 1)) }'
+          xcodebuild -version
+          xcodebuild -project Garim.xcodeproj -scheme Garim -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/GarimBuild" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO build
+
+      - name: Verify app and package IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="$RUNNER_TEMP/GarimBuild/Build/Products/Release-iphoneos/Garim.app"
+          test -x "$app/Garim"
+          plutil -lint "$app/Info.plist"
+          test "$(plutil -extract CFBundleSupportedPlatforms.0 raw "$app/Info.plist")" = iPhoneOS
+          lipo -verify_arch arm64 "$app/Garim"
+          xcrun vtool -show-build "$app/Garim" | grep -Eq 'platform[[:space:]]+IOS$'
+          mkdir -p "$RUNNER_TEMP/Package/Payload"
+          ditto "$app" "$RUNNER_TEMP/Package/Payload/Garim.app"
+          ditto -c -k --norsrc --keepParent "$RUNNER_TEMP/Package/Payload" "$RUNNER_TEMP/Garim-unsigned.ipa"
+          unzip -tq "$RUNNER_TEMP/Garim-unsigned.ipa"
+          shasum -a 256 "$RUNNER_TEMP/Garim-unsigned.ipa"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Garim-unsigned-IPA
+          path: ${{ runner.temp }}/Garim-unsigned.ipa
+          retention-days: 7
+          if-no-files-found: error
