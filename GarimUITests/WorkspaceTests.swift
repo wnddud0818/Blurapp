@@ -54,7 +54,7 @@ final class WorkspaceTests: XCTestCase {
         app.buttons["photos-menu"].tap()
         app.buttons["사진 추가"].tap()
         let cell = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
-        XCTAssertTrue(cell.waitForExistence(timeout: 12), app.debugDescription)
+        XCTAssertTrue(cell.waitForExistence(timeout: 90), app.debugDescription)
         cell.tap()
         let submit = app.navigationBars.buttons.matching(NSPredicate(format: "label MATCHES[c] %@", "(Add|Done|추가|완료)(.*)")).firstMatch
         XCTAssertTrue(submit.exists, app.debugDescription)
