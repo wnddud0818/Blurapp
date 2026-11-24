@@ -43,7 +43,7 @@ jobs:
             # An existing tag (always the case for a published release) is built from its own commit.
             echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
           else
-            # A new tag is created below at exactly the commit being built.
+            # A new tag is created (or a draft release pinned) below at exactly the commit being built.
             echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
           fi
 
@@ -56,9 +56,15 @@ jobs:
         run: ./scripts/build-ipa.sh "build/Garim-${TAG}-unsigned.ipa"
 
       - name: Attach to release
+        env:
+          BUILT_REF: ${{ steps.pick.outputs.ref }}
         run: |
           IPA="build/Garim-${TAG}-unsigned.ipa"
           if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$BUILT_REF" = "$GITHUB_SHA" ]; then
+              # A draft release whose tag isn't created yet: pin the tag to the commit that was built.
+              gh release edit "$TAG" --target "$GITHUB_SHA"
+            fi
             gh release upload "$TAG" "$IPA" --clobber
           else
             gh release create "$TAG" "$IPA" --target "$GITHUB_SHA" --title "가림 $TAG" --generate-notes
