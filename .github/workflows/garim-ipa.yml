@@ -9,8 +9,24 @@ permissions:
   contents: read
 
 jobs:
+  diagnose:
+    if: github.event_name == 'push' && github.event.head_commit.message == 'Diagnose the runner allocation failures'
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    permissions:
+      checks: read
+    steps:
+      - name: Read the two failed jobs' annotations
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          for job in 138309107175 138309434270; do
+            gh api "repos/$GITHUB_REPOSITORY/check-runs/$job/annotations" --jq '.[] | .message'
+          done
+
   package:
-    runs-on: macos-26
+    if: github.event_name != 'push' || github.event.head_commit.message != 'Diagnose the runner allocation failures'
+    runs-on: xcode-27
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
