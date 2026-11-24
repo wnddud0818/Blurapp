@@ -23,6 +23,11 @@ concurrency:
 
 jobs:
   ipa:
+    # Skip, without taking a runner, when the release already carries the IPA
+    # (scripts/publish-ipa.sh uploads it before publishing).
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !contains(github.event.release.assets.*.name, format('Garim-{0}-unsigned.ipa', github.event.release.tag_name))
     # Xcode 27 builds against the iOS 27 SDK, which iPhone Duo's full display needs.
     runs-on: xcode-27
     timeout-minutes: 40
@@ -31,10 +36,21 @@ jobs:
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
+      - name: Pick commit
+        id: pick
+        run: |
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            # An existing tag (always the case for a published release) is built from its own commit.
+            echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # A new tag is created below at exactly the commit being built.
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Check out
         uses: actions/checkout@v7
         with:
-          ref: ${{ github.event.release.tag_name || github.ref }}
+          ref: ${{ steps.pick.outputs.ref }}
 
       - name: Build unsigned IPA
         run: ./scripts/build-ipa.sh "build/Garim-${TAG}-unsigned.ipa"

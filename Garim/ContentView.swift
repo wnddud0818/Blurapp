@@ -324,15 +324,15 @@ struct ContentView: View {
                     Task { await editor.saveAll() }
                 } label: {
                     PrimaryLabel(title: saveAllTitle,
-                                 symbol: allSaved ? "checkmark.circle.fill" : "square.and.arrow.down.on.square")
+                                 symbol: batchDone ? "checkmark.circle.fill" : "square.and.arrow.down.on.square")
                 }
                 .buttonStyle(.plain)
                 .disabled(!editor.canSaveAll || drawing)
-                .opacity(editor.canSaveAll && !drawing || editor.saving || allSaved ? 1 : 0.5)
+                .opacity(editor.canSaveAll && !drawing || editor.savingAll || batchDone ? 1 : 0.5)
                 Button {
                     Task { await editor.saveCurrent() }
                 } label: {
-                    Label(currentSaved ? "이 사진은 저장됨" : "이 사진만 저장",
+                    Label(editor.saving && !editor.savingAll ? "저장하는 중…" : (currentSaved ? "이 사진은 저장됨" : "이 사진만 저장"),
                           systemImage: currentSaved ? "checkmark" : "square.and.arrow.down")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
@@ -354,21 +354,29 @@ struct ContentView: View {
                 .disabled(!editor.canSaveCurrent || drawing)
                 .opacity(editor.canSaveCurrent && !drawing || currentSaved ? 1 : 0.5)
             }
+            if editor.pages.count > 1 && editor.unreviewedCount > 0 {
+                Text("골라서 남기기에서는 열어서 남길 대상을 확인한 사진만 모두 저장에 들어가요. 아직 확인하지 않은 사진 \(editor.unreviewedCount)장")
+                    .font(.footnote.weight(.semibold)).foregroundStyle(Palette.ink)
+            }
             Text("JPEG · 긴 변 최대 4,096픽셀 · 원본은 그대로 두고 새 사진으로 저장해요")
                 .font(.footnote).foregroundStyle(Palette.moss)
         }
     }
 
     private var currentSaved: Bool { editor.current?.saved ?? false }
-    private var allSaved: Bool { !editor.pages.isEmpty && editor.pages.allSatisfy(\.saved) }
+    private var savedCount: Int { editor.pages.filter(\.saved).count }
+    /// Everything that can be saved right now has been saved.
+    private var batchDone: Bool { editor.unsavedCount == 0 && savedCount > 0 }
 
     private var saveAllTitle: String {
-        if let progress = editor.saveProgress {
+        if editor.savingAll, let progress = editor.saveProgress {
             return "저장하는 중 \(progress.done)/\(progress.total)"
         }
         if editor.unsavedCount > 0 { return "모두 저장 · \(editor.unsavedCount)장" }
-        if editor.pages.contains(where: \.saved) { return "모두 저장됨" }
-        return "가릴 영역을 먼저 골라 주세요"
+        if savedCount > 0 {
+            return savedCount == editor.pages.count ? "모두 저장됨" : "\(savedCount)장 저장됨"
+        }
+        return editor.style.mode == .keep ? "사진을 열어 남길 대상을 확인해 주세요" : "가릴 영역을 먼저 골라 주세요"
     }
 }
 
@@ -462,9 +470,14 @@ private struct PhotoStrip: View {
                 }
                 .padding(.vertical, 2)
             }
-            .onChange(of: editor.currentID) { _, id in
+            .onChange(of: editor.currentID, initial: true) { old, id in
                 guard let id else { return }
-                withAnimation { proxy.scrollTo(id, anchor: .center) }
+                if old == id {
+                    // First appearance, for example after photos were added.
+                    proxy.scrollTo(id, anchor: .center)
+                } else {
+                    withAnimation { proxy.scrollTo(id, anchor: .center) }
+                }
             }
         }
     }

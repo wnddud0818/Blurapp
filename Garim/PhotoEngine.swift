@@ -60,6 +60,8 @@ struct PhotoPage: Identifiable {
     /// Labels of the subjects to keep.
     var kept: Set<Int> = []
     var saved = false
+    /// The photo was shown in keep mode, so its kept subjects were seen before saving.
+    var keepReviewed = false
 
     func plan(_ style: MaskStyle) -> MaskPlan {
         MaskPlan(style: style, regions: regions, keepAreas: keepAreas, subjects: analysis.result, kept: kept)
@@ -73,6 +75,12 @@ struct MaskPlan {
     var keepAreas: [MaskRegion] = []
     var subjects: SubjectMap? = nil
     var kept: Set<Int> = []
+    /// Output pixels per editing-preview pixel. Pixel floors scale with it so a saved photo is
+    /// covered exactly like its preview.
+    var resolution: CGFloat = 1
+
+    /// Smallest cell or blur radius, in output pixels.
+    var minimumUnit: CGFloat { 2 * resolution }
 
     /// Whether the output differs from the input.
     var changesPhoto: Bool {
@@ -164,6 +172,9 @@ actor PhotoEngine {
 
     func jpeg(_ data: Data, plan: MaskPlan) throws -> Data {
         let input = try decode(data, longestEdge: Self.exportLimit)
+        let longest = CGFloat(max(input.width, input.height))
+        var plan = plan
+        plan.resolution = longest / min(CGFloat(Self.previewLimit), longest)
         let output = try composite(input, plan: plan)
         let bytes = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(bytes, UTType.jpeg.identifier as CFString, 1, nil)
@@ -235,16 +246,17 @@ actor PhotoEngine {
             try Task.checkCancellation()
             let rect = region.coreImageRect(in: base.extent)
             guard !rect.isEmpty else { continue }
-            let unit = max(2, min(rect.width, rect.height) / plan.style.strength.cells)
-            result = plan.style.effect.apply(to: base.cropped(to: rect), unit: unit).composited(over: result)
+            let unit = max(plan.minimumUnit, min(rect.width, rect.height) / plan.style.strength.cells)
+            result = plan.style.effect.apply(to: base.cropped(to: rect), unit: unit, minimum: plan.minimumUnit)
+                .composited(over: result)
         }
         return result
     }
 
     private func keep(_ base: CIImage, plan: MaskPlan) throws -> CIImage {
         let extent = base.extent
-        let unit = max(2, min(extent.width, extent.height) / plan.style.strength.backgroundCells)
-        let covered = plan.style.effect.apply(to: base, unit: unit)
+        let unit = max(plan.minimumUnit, min(extent.width, extent.height) / plan.style.strength.backgroundCells)
+        let covered = plan.style.effect.apply(to: base, unit: unit, minimum: plan.minimumUnit)
         try Task.checkCancellation()
         guard let mask = keepMask(plan, extent: extent) else { return covered }
         return base.applyingFilter("CIBlendWithMask", parameters: [

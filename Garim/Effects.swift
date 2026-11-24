@@ -30,8 +30,9 @@ enum MaskEffect: String, CaseIterable, Identifiable {
     /// A solid cover hides everything at once, so strength does not apply to it.
     var usesStrength: Bool { self != .solid }
 
-    /// Applies the effect inside `image.extent`. `unit` is the size of one cell in pixels.
-    func apply(to image: CIImage, unit: CGFloat) -> CIImage {
+    /// Applies the effect inside `image.extent`. `unit` is the size of one cell in pixels and
+    /// `minimum` the smallest blur radius, both already scaled to the image's resolution.
+    func apply(to image: CIImage, unit: CGFloat, minimum: CGFloat = 2) -> CIImage {
         let extent = image.extent
         let center = CIVector(x: extent.midX, y: extent.midY)
         // Clamping repeats edge pixels so cells and blur near the border don't fade to transparent.
@@ -55,7 +56,7 @@ enum MaskEffect: String, CaseIterable, Identifiable {
             ])
         case .blur:
             output = edges.applyingFilter("CIGaussianBlur", parameters: [
-                kCIInputRadiusKey: max(2, unit * 0.6)
+                kCIInputRadiusKey: max(minimum, unit * 0.6)
             ])
         case .solid:
             output = CIImage(color: CIColor(red: 0.06, green: 0.06, blue: 0.06))

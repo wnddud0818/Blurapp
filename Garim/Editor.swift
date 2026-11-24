@@ -24,6 +24,8 @@ final class Editor: ObservableObject {
     @Published private(set) var overlay: CGImage?
     @Published private(set) var importProgress: BatchProgress?
     @Published private(set) var saveProgress: BatchProgress?
+    /// The running save was started by "save all".
+    @Published private(set) var savingAll = false
     @Published private(set) var rendering = false
     @Published private(set) var analyzing: Set<UUID> = []
     @Published var notice: String?
@@ -65,8 +67,19 @@ final class Editor: ObservableObject {
             && !page.saved && page.plan(style).changesPhoto
     }
 
-    var unsavedCount: Int { pages.filter { !$0.saved && $0.plan(style).changesPhoto }.count }
+    var unsavedCount: Int { pages.filter(isPending).count }
     var canSaveAll: Bool { !busy && unsavedCount > 0 }
+
+    /// Photos left out of "save all" in keep mode because their kept subjects were never shown.
+    var unreviewedCount: Int {
+        style.mode == .keep ? pages.filter { !$0.saved && !$0.keepReviewed }.count : 0
+    }
+
+    /// In keep mode a photo is saved only after its kept subjects were on screen, so a batch save never
+    /// reveals a person the user didn't choose to keep.
+    private func isPending(_ page: PhotoPage) -> Bool {
+        !page.saved && page.plan(style).changesPhoto && (style.mode == .cover || page.keepReviewed)
+    }
 
     // MARK: - Batch
 
@@ -281,6 +294,9 @@ final class Editor: ObservableObject {
                 preview = output.image
                 overlay = output.overlay
                 previewID = page.id
+                if style.mode == .keep, let index = currentIndex, pages[index].id == page.id {
+                    pages[index].keepReviewed = true
+                }
             } catch {
                 guard ticket == revision, !Task.isCancelled else { return }
                 notice = PhotoError.render.localizedDescription
@@ -301,7 +317,11 @@ final class Editor: ObservableObject {
     private func analyze(_ id: UUID, source: CGImage?) async -> SubjectAnalysis {
         guard let page = pages.first(where: { $0.id == id }) else { return .failed }
         if page.analysis.hasRun { return page.analysis }
-        if let running = analysisTasks[id] { return await running.value }
+        if let running = analysisTasks[id] {
+            let result = await running.value
+            store(result, for: id)
+            return result
+        }
         let faces = page.regions.filter { !$0.manual }.map(\.box)
         let original = page.original
         let engine = self.engine
@@ -321,13 +341,18 @@ final class Editor: ObservableObject {
         analysisTasks[id] = task
         analyzing.insert(id)
         let result = await task.value
+        store(result, for: id)
+        return result
+    }
+
+    /// Every awaiter stores the result, so whichever resumes first already sees it in `pages`.
+    private func store(_ result: SubjectAnalysis, for id: UUID) {
         analysisTasks[id] = nil
         analyzing.remove(id)
         if let index = pages.firstIndex(where: { $0.id == id }), !pages[index].analysis.hasRun {
             pages[index].analysis = result
             pages[index].kept = result.result?.defaultKept ?? []
         }
-        return result
     }
 
     // MARK: - Saving
@@ -339,7 +364,9 @@ final class Editor: ObservableObject {
 
     func saveAll() async {
         guard canSaveAll else { return }
-        await save(pages.filter { !$0.saved && $0.plan(style).changesPhoto }.map(\.id))
+        savingAll = true
+        defer { savingAll = false }
+        await save(pages.filter(isPending).map(\.id))
     }
 
     private func save(_ ids: [UUID]) async {
@@ -354,9 +381,6 @@ final class Editor: ObservableObject {
         let style = self.style
         var count = 0
         for id in ids {
-            if style.mode == .keep {
-                await analyze(id, source: id == sourceID ? source : nil)
-            }
             guard let page = pages.first(where: { $0.id == id }) else { continue }
             do {
                 let data = try await engine.jpeg(page.original, plan: page.plan(style))
