@@ -29,3 +29,15 @@ struct PrimaryLabel: View {
         .background(Palette.ink, in: RoundedRectangle(cornerRadius: 17))
     }
 }
+
+struct Brand: View {
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "squareshape.split.3x3")
+                .font(.headline.bold()).foregroundStyle(Palette.lime)
+                .frame(width: 32, height: 32).background(Palette.ink, in: RoundedRectangle(cornerRadius: 9))
+            Text("가림").font(.title3.weight(.heavy))
+        }
+        .accessibilityElement(children: .combine)
+    }
+}

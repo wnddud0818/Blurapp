@@ -1,0 +1,49 @@
+name: Release IPA
+
+# Builds an unsigned Garim.ipa and attaches it to a GitHub release.
+# It never runs on ordinary pushes, so pushing code uses no Actions minutes.
+# - Publishing a release on GitHub builds and attaches the IPA automatically.
+# - Actions > Release IPA > Run workflow builds a tag (creating the release if it doesn't exist).
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "IPA를 올릴 릴리즈 태그 (예: v1.1.0). 릴리즈가 없으면 선택한 브랜치로 새로 만들어요."
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-ipa-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    # Xcode 27 builds against the iOS 27 SDK, which iPhone Duo's full display needs.
+    runs-on: xcode-27
+    timeout-minutes: 40
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ github.event.release.tag_name || github.ref }}
+
+      - name: Build unsigned IPA
+        run: ./scripts/build-ipa.sh "build/Garim-${TAG}-unsigned.ipa"
+
+      - name: Attach to release
+        run: |
+          IPA="build/Garim-${TAG}-unsigned.ipa"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release upload "$TAG" "$IPA" --clobber
+          else
+            gh release create "$TAG" "$IPA" --target "$GITHUB_SHA" --title "가림 $TAG" --generate-notes
+          fi

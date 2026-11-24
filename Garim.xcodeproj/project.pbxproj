@@ -34,6 +34,24 @@
 			path = WelcomeView.swift;
 			sourceTree = "<group>";
 		};
+		3A6C1E52B7D04F19A2C8E101 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = Effects.swift;
+			sourceTree = "<group>";
+		};
+		3A6C1E52B7D04F19A2C8E103 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = SubjectMap.swift;
+			sourceTree = "<group>";
+		};
+		3A6C1E52B7D04F19A2C8E105 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = PhotoCanvas.swift;
+			sourceTree = "<group>";
+		};
 		A10923C854E2D8D63100172A = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -54,6 +72,9 @@
 				7DF66E3CA1A81F0660447D5F,
 				020CE4AFB442B59A61619FD0,
 				85722EF50479960824E5C800,
+				3A6C1E52B7D04F19A2C8E101,
+				3A6C1E52B7D04F19A2C8E103,
+				3A6C1E52B7D04F19A2C8E105,
 				AD100DAD42B4C42891F6122B,
 			);
 			sourceTree = "<group>";
@@ -151,8 +172,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 2;
+				MARKETING_VERSION = 1.1;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -177,8 +198,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 2;
+				MARKETING_VERSION = 1.1;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
@@ -212,8 +233,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 2;
+				MARKETING_VERSION = 1.1;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.tests;
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -234,8 +255,8 @@
 				TARGETED_DEVICE_FAMILY = 1;
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator";
 				PRODUCT_NAME = "$(TARGET_NAME)";
-				CURRENT_PROJECT_VERSION = 1;
-				MARKETING_VERSION = 1.0;
+				CURRENT_PROJECT_VERSION = 2;
+				MARKETING_VERSION = 1.1;
 				SUPPORTS_MACCATALYST = NO;
 				PRODUCT_BUNDLE_IDENTIFIER = app.garim.mobile.tests;
 				BUNDLE_LOADER = "$(TEST_HOST)";
@@ -280,6 +301,18 @@
 			isa = PBXBuildFile;
 			fileRef = 85722EF50479960824E5C800;
 		};
+		3A6C1E52B7D04F19A2C8E102 = {
+			isa = PBXBuildFile;
+			fileRef = 3A6C1E52B7D04F19A2C8E101;
+		};
+		3A6C1E52B7D04F19A2C8E104 = {
+			isa = PBXBuildFile;
+			fileRef = 3A6C1E52B7D04F19A2C8E103;
+		};
+		3A6C1E52B7D04F19A2C8E106 = {
+			isa = PBXBuildFile;
+			fileRef = 3A6C1E52B7D04F19A2C8E105;
+		};
 		445BD7AF1F03505D272E9D8B = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -289,6 +322,9 @@
 				D386250390AA84A34A0A6A4E,
 				0596BDA8A8F614985515E09B,
 				E5571F44B566CC2B3A7B752E,
+				3A6C1E52B7D04F19A2C8E102,
+				3A6C1E52B7D04F19A2C8E104,
+				3A6C1E52B7D04F19A2C8E106,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

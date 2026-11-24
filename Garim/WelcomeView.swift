@@ -2,6 +2,7 @@ import SwiftUI
 
 struct WelcomeView: View {
     let columns: Bool
+    let limit: Int
     let choosePhoto: () -> Void
     @State private var sampleMasked = true
 
@@ -40,7 +41,18 @@ struct WelcomeView: View {
             Text("얼굴 모자이크").font(.system(.largeTitle, design: .rounded, weight: .heavy))
             Text("사진을 골라 가릴 얼굴과 남길 얼굴을 정하세요.")
                 .font(.body).foregroundStyle(Palette.moss)
+            VStack(alignment: .leading, spacing: 8) {
+                feature("여러 장을 한 번에 골라 함께 저장", symbol: "photo.stack")
+                feature("모자이크·육각·크리스털·블러·검정 가림", symbol: "square.grid.3x3")
+                feature("고른 사람·물체만 남기고 나머지 가리기", symbol: "person.crop.rectangle")
+            }
+            .padding(.top, 4)
         }
+    }
+
+    private func feature(_ text: String, symbol: String) -> some View {
+        Label(text, systemImage: symbol)
+            .font(.subheadline.weight(.medium))
     }
 
     private var chooseButton: some View {
@@ -49,7 +61,7 @@ struct WelcomeView: View {
                 PrimaryLabel(title: "사진 선택하기", symbol: "photo.on.rectangle.angled")
             }
             .buttonStyle(.plain)
-            Text("얼굴 감지와 모자이크는 아이폰에서 처리해요.")
+            Text("한 번에 최대 \(limit)장까지 고를 수 있어요. 감지와 가림은 모두 아이폰에서 처리해요.")
                 .font(.footnote).foregroundStyle(Palette.moss)
         }
     }
