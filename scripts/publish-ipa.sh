@@ -57,7 +57,7 @@ if gh release view "$TAG" >/dev/null 2>&1; then
 elif [ "$TAG_EXISTS" = yes ]; then
   gh release create "$TAG" "$IPA" --verify-tag --title "가림 $TAG" --generate-notes
 else
-  # gh uploads the IPA before publishing, so the Release IPA workflow skips itself.
+  # Create the release with the locally built IPA attached.
   gh release create "$TAG" "$IPA" --target "$HEAD_COMMIT" --title "가림 $TAG" --generate-notes
 fi
 echo "릴리즈 $TAG 에 $IPA 를 올렸어요."
