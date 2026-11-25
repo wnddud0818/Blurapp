@@ -5,8 +5,6 @@ import UIKit
 struct ContentView: View {
     @StateObject private var editor = Editor()
     @State private var selections: [PhotosPickerItem] = []
-    @State private var chosenVideo: PhotosPickerItem?
-    @State private var movie: VideoImport?
     @State private var choosingPhotos = false
     @State private var replacing = true
     @Environment(\.horizontalSizeClass) private var widthClass
@@ -38,7 +36,7 @@ struct ContentView: View {
                 edit(page)
             } else {
                 GeometryReader { geo in
-                    WelcomeView(columns: usesColumns(geo.size), limit: Editor.selectionLimit, video: $chosenVideo,
+                    WelcomeView(columns: usesColumns(geo.size), limit: Editor.selectionLimit,
                                 choosePhoto: { choose(replacing: true) },
                                 openSample: { Task { await editor.openSample() } })
                 }
@@ -50,13 +48,6 @@ struct ContentView: View {
         .photosPicker(isPresented: $choosingPhotos, selection: $selections,
                       maxSelectionCount: pickerLimit, selectionBehavior: .ordered, matching: .images,
                       preferredItemEncoding: .current, photoLibrary: .shared())
-        .onChange(of: chosenVideo) {
-            if let chosenVideo {
-                movie = VideoImport(item: chosenVideo)
-                self.chosenVideo = nil
-            }
-        }
-        .fullScreenCover(item: $movie) { VideoEditor(input: $0) }
         .fullScreenCover(item: $regionSession) { session in
             RegionEditor(editor: editor, session: session)
         }
