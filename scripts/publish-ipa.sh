@@ -55,9 +55,9 @@ if gh release view "$TAG" >/dev/null 2>&1; then
   fi
   gh release upload "$TAG" "$IPA" --clobber
 elif [ "$TAG_EXISTS" = yes ]; then
-  gh release create "$TAG" "$IPA" --verify-tag --title "가림 $TAG" --generate-notes
+  gh release create "$TAG" "$IPA" --verify-tag --title "모자이크 $TAG" --generate-notes
 else
   # Create the release with the locally built IPA attached.
-  gh release create "$TAG" "$IPA" --target "$HEAD_COMMIT" --title "가림 $TAG" --generate-notes
+  gh release create "$TAG" "$IPA" --target "$HEAD_COMMIT" --title "모자이크 $TAG" --generate-notes
 fi
 echo "릴리즈 $TAG 에 $IPA 를 올렸어요."
