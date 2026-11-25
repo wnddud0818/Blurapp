@@ -178,7 +178,15 @@ enum FaceSearch {
                 let overlap = box.intersection(other)
                 guard !overlap.isEmpty else { return false }
                 let intersection = area(overlap)
-                return intersection >= 0.45 * (area(box) + area(other) - intersection)
+                let boxArea = area(box), otherArea = area(other)
+                if intersection >= 0.45 * (boxArea + otherArea - intersection) { return true }
+
+                // A crop can pick out just the middle of a close-up face. Check containment
+                // near the center so a small face along someone else's outline stays separate.
+                let larger = boxArea > otherArea ? box : other
+                return intersection >= 0.85 * min(boxArea, otherArea)
+                    && abs(box.midX - other.midX) <= larger.width * 0.25
+                    && abs(box.midY - other.midY) <= larger.height * 0.25
             }
             if !duplicate { kept.append(box) }
         }

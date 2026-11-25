@@ -55,6 +55,19 @@ final class MaskTests: XCTestCase {
         for face in [foreground, distant, neighbor] { XCTAssertTrue(boxes.contains(face)) }
     }
 
+    func testCloseUpKeepsOneRegionForANestedTileDetection() {
+        let face = CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
+        let detail = CGRect(x: 0.27, y: 0.4, width: 0.25, height: 0.3)
+        XCTAssertEqual(FaceSearch.combinedBoxes(wholeImage: [face], tiles: [detail]), [face])
+        XCTAssertEqual(FaceSearch.combinedBoxes(wholeImage: [], tiles: [detail, face]), [face])
+    }
+
+    func testSmallFaceAtTheEdgeOfALargerFaceRemainsSelectable() {
+        let face = CGRect(x: 0.1, y: 0.1, width: 0.8, height: 0.8)
+        let neighbor = CGRect(x: 0.76, y: 0.42, width: 0.12, height: 0.16)
+        XCTAssertEqual(FaceSearch.combinedBoxes(wholeImage: [face], tiles: [neighbor]), [face, neighbor])
+    }
+
     func testTopFaceRemainsAtTopAcrossCoordinateSystems() {
         let region = MaskRegion.face(CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.2))
         XCTAssertEqual(region.box.minY, 0, accuracy: 0.0001)
