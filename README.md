@@ -10,9 +10,10 @@
 
 [Releases](https://github.com/wnddud0818/Blurapp/releases)에서 `Garim-<버전>-unsigned.ipa`를 내려받습니다. 서명하지 않은 IPA라서 AltStore, SideStore, Sideloadly 같은 사이드로딩 도구로 설치하면 도구가 본인 Apple ID로 서명합니다. 무료 Apple ID로 설치한 앱은 7일마다 갱신해야 하고, iOS 16 이상에서는 **설정 → 개인정보 보호 및 보안 → 개발자 모드**를 켜야 합니다.
 
-릴리즈 IPA는 Mac에서 직접 빌드해 올립니다. GitHub Actions는 사용하지 않습니다.
+릴리즈 IPA는 GitHub Actions의 macOS 러너나 Mac에서 빌드해 올립니다. 올리기 전에 Xcode 프로젝트의 버전(`MARKETING_VERSION`)을 태그와 같게 올립니다.
 
-Xcode와 [GitHub CLI](https://cli.github.com)(`gh auth login`)가 있는 Mac에서 `scripts/publish-ipa.sh v1.1.0`을 실행합니다. 태그가 이미 GitHub에 있으면 먼저 `git checkout v1.1.0`으로 그 커밋을 받고, 없으면 지금 커밋(먼저 푸시해야 함)에 태그를 만듭니다. IPA 파일만 필요하면 `scripts/build-ipa.sh`를 실행합니다.
+- **GitHub Actions**: **Actions → Release IPA → Run workflow**에서 태그(예: `v1.3.0`)를 넣고 실행합니다. 태그가 있으면 그 커밋을, 없으면 고른 브랜치의 최신 커밋을 빌드하고, 빌드가 성공하면 태그와 릴리즈를 만들어 IPA를 붙입니다. GitHub에서 릴리즈를 직접 게시해도 그 태그를 빌드해 IPA를 붙입니다. iOS 27.1 SDK가 필요해 Xcode 27.1 이상이 있는 macOS 러너(기본 `macos-26`)를 씁니다. 일반 푸시에는 실행되지 않습니다.
+- **Mac**: Xcode와 [GitHub CLI](https://cli.github.com)(`gh auth login`)가 있는 Mac에서 `scripts/publish-ipa.sh v1.3.0`을 실행합니다. 태그가 이미 GitHub에 있으면 먼저 `git checkout v1.3.0`으로 그 커밋을 받고, 없으면 지금 커밋(먼저 푸시해야 함)에 태그를 만듭니다. IPA 파일만 필요하면 `scripts/build-ipa.sh`를 실행합니다.
 
 ## 실행
 

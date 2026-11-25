@@ -1,0 +1,156 @@
+name: Release IPA
+
+# GitHub의 macOS 러너에서 서명하지 않은 IPA를 빌드해 GitHub 릴리즈에 올립니다.
+# - Actions → Release IPA → Run workflow: 태그(예: v1.3.0)를 넣습니다. 태그가 있으면 그 커밋을,
+#   없으면 고른 브랜치의 커밋을 빌드하고, 빌드가 성공한 뒤에 태그와 릴리즈를 만들어 IPA를 붙입니다.
+#   릴리즈가 이미 있으면 IPA만 올리거나 바꿉니다.
+# - GitHub에서 릴리즈를 게시하면 그 태그를 빌드해 IPA를 붙입니다. IPA가 이미 있으면 러너 없이 건너뜁니다.
+# 일반 푸시에는 실행되지 않습니다.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "릴리즈 태그 (예: v1.3.0)"
+        required: true
+        type: string
+      notes:
+        description: "새 릴리즈의 노트 (비우면 커밋 목록으로 자동 생성)"
+        required: false
+        type: string
+      runner:
+        description: "macOS 러너 (iOS 27.1 SDK 이상이 든 Xcode가 있어야 함)"
+        required: false
+        default: macos-26
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-ipa-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  ipa:
+    if: >-
+      github.event_name == 'workflow_dispatch' ||
+      !contains(github.event.release.assets.*.name, format('Garim-{0}-unsigned.ipa', github.event.release.tag_name))
+    runs-on: ${{ inputs.runner || 'macos-26' }}
+    timeout-minutes: 40
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+      GH_REPO: ${{ github.repository }}
+    steps:
+      - name: Pick commit
+        id: pick
+        shell: bash
+        run: |
+          set -euo pipefail
+          if ! [[ "$TAG" =~ ^v[0-9][0-9A-Za-z._-]*$ ]]; then
+            echo "::error::태그는 v와 숫자로 시작해야 해요 (예: v1.3.0): $TAG"
+            exit 1
+          fi
+          if gh api "repos/$GH_REPO/git/ref/tags/$TAG" >/dev/null 2>&1; then
+            # 이미 있는 태그(게시된 릴리즈는 항상 해당)는 그 커밋을 빌드합니다.
+            echo "ref=refs/tags/$TAG" >> "$GITHUB_OUTPUT"
+          else
+            # 새 태그는 빌드가 성공한 뒤 바로 이 커밋에 만듭니다.
+            echo "ref=$GITHUB_SHA" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Check out
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ steps.pick.outputs.ref }}
+          persist-credentials: false
+
+      - name: Select Xcode with the iOS 27.1 SDK or later
+        shell: bash
+        run: |
+          set -euo pipefail
+          # iPhone Duo 화면 분할 API(ArrangementView 등)는 iOS 27.1 SDK부터 있어요.
+          found=""
+          for app in /Applications/Xcode*.app; do
+            dev="$app/Contents/Developer"
+            sdk="$(DEVELOPER_DIR="$dev" xcrun --sdk iphoneos --show-sdk-version 2>/dev/null)" || continue
+            echo "$app: iOS SDK $sdk"
+            case "$app" in *[Bb]eta*) stable=0 ;; *) stable=1 ;; esac
+            found+="$stable $sdk $dev"$'\n'
+          done
+          # 정식 버전을 베타보다 먼저, 그다음 iOS SDK가 높은 Xcode를 고릅니다.
+          pick="$(printf '%s' "$found" | awk 'NF {
+              split($2, v, ".")
+              if (v[1] > 27 || (v[1] == 27 && v[2] >= 1)) {
+                path = $0; sub(/^[^ ]+ [^ ]+ /, "", path)
+                printf "%d %05d %05d %s\n", $1, v[1], v[2], path
+              }
+            }' | sort | tail -n 1 | cut -d' ' -f4-)"
+          if [ -z "$pick" ]; then
+            echo "::error::이 러너에는 iOS 27.1 SDK 이상이 든 Xcode가 없어요. runner 입력으로 다른 macOS 러너를 골라 다시 실행해 주세요."
+            exit 1
+          fi
+          echo "DEVELOPER_DIR=$pick" >> "$GITHUB_ENV"
+          DEVELOPER_DIR="$pick" xcodebuild -version
+
+      - name: Build unsigned IPA
+        run: scripts/build-ipa.sh "build/Garim-${TAG}-unsigned.ipa"
+
+      - name: Check IPA
+        id: check
+        shell: bash
+        run: |
+          set -euo pipefail
+          IPA="build/Garim-${TAG}-unsigned.ipa"
+          APP="build/ipa-work/Payload/Garim.app"
+          unzip -tq "$IPA"
+          lipo -verify_arch arm64 "$APP/Garim"
+          test "$(plutil -extract CFBundleSupportedPlatforms.0 raw "$APP/Info.plist")" = iPhoneOS
+          VERSION="$(plutil -extract CFBundleShortVersionString raw "$APP/Info.plist")"
+          BUILD="$(plutil -extract CFBundleVersion raw "$APP/Info.plist")"
+          if [ "${TAG#v}" != "$VERSION" ]; then
+            echo "::warning::태그 $TAG 와 앱 버전 $VERSION 이 달라요. Xcode 프로젝트의 MARKETING_VERSION을 확인해 주세요."
+          fi
+          XCODE="$(xcodebuild -version | head -n 1)"
+          SDK="$(xcrun --sdk iphoneos --show-sdk-version)"
+          COMMIT="$(git rev-parse HEAD)"
+          SHA256="$(shasum -a 256 "$IPA" | cut -d' ' -f1)"
+          echo "build_info=$XCODE · iOS SDK $SDK · 앱 버전 $VERSION ($BUILD) · 커밋 ${COMMIT:0:7}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### $(basename "$IPA")"
+            echo "- $XCODE, iOS SDK $SDK"
+            echo "- 앱 버전 $VERSION ($BUILD), 커밋 $COMMIT"
+            echo "- SHA-256 \`$SHA256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Attach to release
+        shell: bash
+        env:
+          BUILT_REF: ${{ steps.pick.outputs.ref }}
+          NOTES: ${{ inputs.notes }}
+          BUILD_INFO: ${{ steps.check.outputs.build_info }}
+        run: |
+          set -euo pipefail
+          IPA="build/Garim-${TAG}-unsigned.ipa"
+          SHA="$(git rev-parse HEAD)"
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            if [ "$BUILT_REF" != "refs/tags/$TAG" ]; then
+              # 태그가 아직 없는 초안 릴리즈: 빌드한 커밋에 태그를 고정합니다.
+              gh release edit "$TAG" --target "$SHA"
+            fi
+            gh release upload "$TAG" "$IPA" --clobber
+          else
+            NOTES_FILE="$RUNNER_TEMP/notes.md"
+            {
+              if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
+              printf '_GitHub Actions에서 빌드: %s_\n' "$BUILD_INFO"
+            } > "$NOTES_FILE"
+            args=(--title "모자이크 $TAG" --notes-file "$NOTES_FILE")
+            # 노트를 주지 않으면 커밋 목록을 뒤에 붙입니다.
+            if [ -z "$NOTES" ]; then args+=(--generate-notes); fi
+            if [ "$BUILT_REF" = "refs/tags/$TAG" ]; then args+=(--verify-tag); else args+=(--target "$SHA"); fi
+            gh release create "$TAG" "$IPA" "${args[@]}"
+          fi
+          echo "릴리즈: $(gh release view "$TAG" --json url --jq .url)"
