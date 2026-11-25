@@ -49,6 +49,22 @@ final class Editor: ObservableObject {
     var canAddPhotos: Bool { !busy && pages.count < Self.selectionLimit }
     var analyzingCurrent: Bool { currentID.map { analyzing.contains($0) } ?? false }
 
+    /// The unmasked editing preview of the current photo, once it is decoded.
+    var currentSource: CGImage? {
+        guard let sourceID, sourceID == currentID else { return nil }
+        return source
+    }
+
+    /// The areas of the current photo that can be drawn, moved, resized and deleted: faces and drawn
+    /// areas to cover in cover mode, drawn areas to keep in keep mode.
+    var editableAreas: [MaskRegion] {
+        guard let page = current else { return [] }
+        switch style.mode {
+        case .cover: return page.regions
+        case .keep: return page.keepAreas
+        }
+    }
+
     /// Covered areas in cover mode, kept subjects and areas in keep mode.
     var activeCount: Int {
         guard let page = current else { return 0 }
@@ -216,6 +232,34 @@ final class Editor: ObservableObject {
         changed(p)
     }
 
+    /// Deletes a face or drawn area from the current photo.
+    func removeArea(_ id: UUID) {
+        guard !busy, let p = currentIndex else { return }
+        if let i = pages[p].regions.firstIndex(where: { $0.id == id }) {
+            pages[p].regions.remove(at: i)
+        } else if let i = pages[p].keepAreas.firstIndex(where: { $0.id == id }) {
+            pages[p].keepAreas.remove(at: i)
+        } else {
+            return
+        }
+        changed(p)
+    }
+
+    /// Stores the areas finished in the full-screen editor. Edits made for a photo or mode that is no
+    /// longer showing are dropped.
+    func setAreas(_ areas: [MaskRegion], page id: UUID, mode: MaskMode) {
+        guard !busy, mode == style.mode, let p = currentIndex, pages[p].id == id else { return }
+        switch mode {
+        case .cover:
+            guard pages[p].regions != areas else { return }
+            pages[p].regions = areas
+        case .keep:
+            guard pages[p].keepAreas != areas else { return }
+            pages[p].keepAreas = areas
+        }
+        changed(p)
+    }
+
     func toggleSubject(_ subjectID: Int) {
         guard !busy, let p = currentIndex,
               pages[p].analysis.result?.subjects.contains(where: { $0.id == subjectID }) == true
@@ -334,7 +378,7 @@ final class Editor: ObservableObject {
             store(result, for: id)
             return result
         }
-        let faces = page.regions.filter { !$0.manual }.map(\.box)
+        let faces = page.faces
         let original = page.original
         let engine = self.engine
         let task = Task<SubjectAnalysis, Never> {

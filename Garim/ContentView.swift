@@ -22,7 +22,8 @@ struct ContentView: View {
 
     @State private var tool = Tool.region
     @State private var confirmClose = false
-    @State private var drawing = false
+    /// The full-screen area editor, while it is open.
+    @State private var regionSession: RegionSession?
     @State private var cleanPreview = false
     @Environment(\.openURL) private var openURL
 
@@ -47,18 +48,21 @@ struct ContentView: View {
         .photosPicker(isPresented: $choosingPhotos, selection: $selections,
                       maxSelectionCount: pickerLimit, selectionBehavior: .ordered, matching: .images,
                       preferredItemEncoding: .current, photoLibrary: .shared())
+        .fullScreenCover(item: $regionSession) { session in
+            RegionEditor(editor: editor, session: session)
+        }
         .task(id: selections) {
             guard !selections.isEmpty else { return }
-            drawing = false
+            regionSession = nil
             cleanPreview = false
             await editor.load(selections, replacing: replacing)
             if !Task.isCancelled { selections = [] }
         }
         .onChange(of: editor.currentID) {
-            drawing = false
+            regionSession = nil
             if editor.currentID == nil { tool = .region; cleanPreview = false }
         }
-        .onChange(of: editor.style.mode) { drawing = false }
+        .onChange(of: editor.style.mode) { regionSession = nil }
         .alert("알림", isPresented: Binding(
             get: { editor.notice != nil },
             set: { if !$0 { editor.notice = nil; editor.needsSettings = false } }
@@ -83,6 +87,13 @@ struct ContentView: View {
     private func choose(replacing: Bool) {
         self.replacing = replacing
         choosingPhotos = true
+    }
+
+    /// Opens the current photo full screen to draw, move, resize and delete areas until "완료".
+    private func editAreas(focus: UUID? = nil) {
+        guard let page = editor.current, !editor.busy else { return }
+        regionSession = RegionSession(pageID: page.id, mode: editor.style.mode,
+                                      areas: editor.editableAreas, focus: focus)
     }
 
     private func edit(_ page: PhotoPage) -> some View {
@@ -153,7 +164,6 @@ struct ContentView: View {
             ForEach(Tool.allCases, id: \.self) { item in
                 Button {
                     tool = item
-                    drawing = false
                 } label: {
                     Label(item.rawValue, systemImage: item.symbol)
                         .font(.subheadline.weight(.semibold))
@@ -216,26 +226,20 @@ struct ContentView: View {
         HStack {
             Text(statusText).font(.subheadline.weight(.semibold))
             Spacer()
-            if drawing {
-                Button("취소") { drawing = false }.frame(minHeight: 44)
-            } else {
-                Button { cleanPreview.toggle() } label: {
-                    Label(cleanPreview ? "편집 보기" : "결과 보기",
-                          systemImage: cleanPreview ? "viewfinder" : "eye")
-                }
-                .font(.subheadline).frame(minHeight: 44)
+            Button { cleanPreview.toggle() } label: {
+                Label(cleanPreview ? "편집 보기" : "결과 보기",
+                      systemImage: cleanPreview ? "viewfinder" : "eye")
             }
+            .font(.subheadline).frame(minHeight: 44)
         }
     }
 
     private var statusText: String {
-        let keep = editor.style.mode == .keep
-        if drawing { return keep ? "남길 부분을 드래그하세요" : "가릴 부분을 드래그하세요" }
-        return keep ? "남긴 대상 \(editor.activeCount)개" : "가린 영역 \(editor.activeCount)개"
+        editor.style.mode == .keep ? "남긴 대상 \(editor.activeCount)개" : "가린 영역 \(editor.activeCount)개"
     }
 
     private var canvas: some View {
-        PhotoCanvas(editor: editor, drawing: $drawing, cleanPreview: cleanPreview)
+        PhotoCanvas(editor: editor, cleanPreview: cleanPreview, adjust: { editAreas(focus: $0) })
     }
 
     // MARK: - Mode and targets
@@ -252,11 +256,8 @@ struct ContentView: View {
             HStack {
                 Text(editor.style.mode == .keep ? "남길 대상" : "가릴 영역").font(.headline)
                 Spacer()
-                Button {
-                    drawing.toggle()
-                } label: {
-                    Label(drawing ? "그리기 취소" : "직접 추가",
-                          systemImage: drawing ? "xmark" : "plus.viewfinder")
+                Button { editAreas() } label: {
+                    Label("직접 추가", systemImage: "plus.viewfinder")
                         .font(.subheadline.weight(.semibold))
                 }
             }
@@ -269,11 +270,16 @@ struct ContentView: View {
 
     @ViewBuilder private func coverTargets(_ page: PhotoPage) -> some View {
         if page.regions.isEmpty {
-            hint(page.faceDetectionFailed ? "자동 감지가 어려운 사진이에요. ‘직접 추가’로 영역을 그려 주세요." :
-                    "얼굴을 찾지 못했습니다. 직접 영역을 그려주세요.")
+            if !page.faces.isEmpty {
+                hint("가릴 영역을 모두 지웠어요. ‘직접 추가’로 다시 그릴 수 있어요.")
+            } else {
+                hint(page.faceDetectionFailed ? "자동 감지가 어려운 사진이에요. ‘직접 추가’로 영역을 그려 주세요." :
+                        "얼굴을 찾지 못했습니다. 직접 영역을 그려주세요.")
+            }
         } else {
-            hint("영역을 눌러 가림을 켜거나 끄세요.")
-            TargetChips(targets: coverChips(page), onValue: "가림", offValue: "원본", toggle: toggle)
+            hint("영역을 눌러 가림을 켜거나 끄세요. 길게 누르면 크기·위치를 고치거나 삭제할 수 있어요.")
+            TargetChips(targets: coverChips(page), onValue: "가림", offValue: "원본", toggle: toggle,
+                        adjust: { editAreas(focus: $0) }, remove: { editor.removeArea($0) })
         }
     }
 
@@ -292,10 +298,12 @@ struct ContentView: View {
                 hint("찾은 사람이나 물체가 없어요. ‘직접 추가’로 남길 영역을 그려 주세요. 지금은 사진 전체가 가려져요.")
             }
         } else {
-            hint("남길 대상을 사진이나 목록에서 누르세요. 고르지 않은 부분은 모두 가려져요.")
+            hint("남길 대상을 사진이나 목록에서 누르세요. 고르지 않은 부분은 모두 가려져요."
+                 + (page.keepAreas.isEmpty ? "" : " 직접 그린 영역은 길게 눌러 고치거나 삭제해요."))
         }
         if !subjects.isEmpty || !page.keepAreas.isEmpty {
-            TargetChips(targets: keepChips(page, subjects: subjects), onValue: "남김", offValue: "가림", toggle: toggle)
+            TargetChips(targets: keepChips(page, subjects: subjects), onValue: "남김", offValue: "가림", toggle: toggle,
+                        adjust: { editAreas(focus: $0) }, remove: { editor.removeArea($0) })
         }
     }
 
@@ -384,8 +392,8 @@ struct ContentView: View {
                                  symbol: batchDone ? "checkmark.circle.fill" : "square.and.arrow.down.on.square")
                 }
                 .buttonStyle(.plain)
-                .disabled(!editor.canSaveAll || drawing)
-                .opacity(editor.canSaveAll && !drawing || editor.savingAll || batchDone ? 1 : 0.5)
+                .disabled(!editor.canSaveAll)
+                .opacity(editor.canSaveAll || editor.savingAll || batchDone ? 1 : 0.5)
                 Button {
                     Task { await editor.saveCurrent() }
                 } label: {
@@ -398,8 +406,8 @@ struct ContentView: View {
                         .overlay(RoundedRectangle(cornerRadius: 15).strokeBorder(Palette.line, lineWidth: 1))
                 }
                 .buttonStyle(.plain)
-                .disabled(!editor.canSaveCurrent || drawing)
-                .opacity(editor.canSaveCurrent && !drawing || currentSaved ? 1 : 0.5)
+                .disabled(!editor.canSaveCurrent)
+                .opacity(editor.canSaveCurrent || currentSaved ? 1 : 0.5)
             } else {
                 Button {
                     Task { await editor.saveCurrent() }
@@ -408,8 +416,8 @@ struct ContentView: View {
                                  symbol: currentSaved ? "checkmark.circle.fill" : "square.and.arrow.down")
                 }
                 .buttonStyle(.plain)
-                .disabled(!editor.canSaveCurrent || drawing)
-                .opacity(editor.canSaveCurrent && !drawing || currentSaved ? 1 : 0.5)
+                .disabled(!editor.canSaveCurrent)
+                .opacity(editor.canSaveCurrent || currentSaved ? 1 : 0.5)
             }
             if editor.pages.count > 1 && editor.unreviewedCount > 0 {
                 Text("골라서 남기기에서는 열어서 남길 대상을 확인한 사진만 모두 저장에 들어가요. 아직 확인하지 않은 사진 \(editor.unreviewedCount)장")
@@ -456,20 +464,36 @@ private struct TargetChips: View {
     let onValue: String
     let offValue: String
     let toggle: (Target.Kind) -> Void
+    /// Opens a face or drawn area in the full-screen editor.
+    let adjust: (UUID) -> Void
+    let remove: (UUID) -> Void
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack {
                 ForEach(targets) { target in
-                    Button { toggle(target.kind) } label: {
-                        Label(target.name, systemImage: target.on ? "checkmark.circle.fill" : "circle")
-                            .font(.subheadline.weight(.medium)).padding(.horizontal, 13).padding(.vertical, 10)
-                            .background(target.on ? Palette.marker : Color.white, in: Capsule())
-                    }
-                    .buttonStyle(.plain)
-                    .accessibilityValue(target.on ? onValue : offValue)
+                    chip(target)
                 }
             }
+        }
+    }
+
+    /// Faces and drawn areas can also be resized or deleted from a long press. Subjects only switch.
+    @ViewBuilder private func chip(_ target: Target) -> some View {
+        let button = Button { toggle(target.kind) } label: {
+            Label(target.name, systemImage: target.on ? "checkmark.circle.fill" : "circle")
+                .font(.subheadline.weight(.medium)).padding(.horizontal, 13).padding(.vertical, 10)
+                .background(target.on ? Palette.marker : Color.white, in: Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(target.on ? onValue : offValue)
+        if case .area(let id) = target.kind {
+            button
+                .contextMenu { AreaMenu(adjust: { adjust(id) }, remove: { remove(id) }) }
+                .accessibilityAction(named: "크기·위치 조정") { adjust(id) }
+                .accessibilityAction(named: "삭제") { remove(id) }
+        } else {
+            button
         }
     }
 }

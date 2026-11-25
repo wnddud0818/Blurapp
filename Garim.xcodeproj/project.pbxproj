@@ -52,6 +52,12 @@
 			path = PhotoCanvas.swift;
 			sourceTree = "<group>";
 		};
+		3A6C1E52B7D04F19A2C8E107 = {
+			isa = PBXFileReference;
+			lastKnownFileType = sourcecode.swift;
+			path = RegionEditor.swift;
+			sourceTree = "<group>";
+		};
 		A10923C854E2D8D63100172A = {
 			isa = PBXFileReference;
 			lastKnownFileType = sourcecode.swift;
@@ -81,6 +87,7 @@
 				3A6C1E52B7D04F19A2C8E101,
 				3A6C1E52B7D04F19A2C8E103,
 				3A6C1E52B7D04F19A2C8E105,
+				3A6C1E52B7D04F19A2C8E107,
 				AD100DAD42B4C42891F6122B,
 			);
 			sourceTree = "<group>";
@@ -387,6 +394,10 @@
 			isa = PBXBuildFile;
 			fileRef = 3A6C1E52B7D04F19A2C8E105;
 		};
+		3A6C1E52B7D04F19A2C8E108 = {
+			isa = PBXBuildFile;
+			fileRef = 3A6C1E52B7D04F19A2C8E107;
+		};
 		445BD7AF1F03505D272E9D8B = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -399,6 +410,7 @@
 				3A6C1E52B7D04F19A2C8E102,
 				3A6C1E52B7D04F19A2C8E104,
 				3A6C1E52B7D04F19A2C8E106,
+				3A6C1E52B7D04F19A2C8E108,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -2,8 +2,9 @@ import SwiftUI
 
 struct PhotoCanvas: View {
     @ObservedObject var editor: Editor
-    @Binding var drawing: Bool
     let cleanPreview: Bool
+    /// Opens the full-screen editor with this area selected.
+    let adjust: (UUID) -> Void
 
     var body: some View {
         GeometryReader { geo in
@@ -23,19 +24,11 @@ struct PhotoCanvas: View {
                                 .frame(width: size.width, height: size.height)
                                 .blur(radius: 8).opacity(0.55)
                         }
-                        if !cleanPreview && !drawing && editor.preview != nil {
+                        if !cleanPreview && editor.preview != nil {
                             switch editor.style.mode {
                             case .cover: coverMarks(page, size: size)
                             case .keep: keepMarks(page, size: size)
                             }
-                        }
-                        if drawing {
-                            ManualMaskOverlay(imageSize: size) { region in
-                                editor.addArea(region)
-                                drawing = false
-                            }
-                            // Touch locations belong to this image size for the entire stroke.
-                            .id([size.width, size.height])
                         }
                     }
                     .frame(width: size.width, height: size.height).clipped()
@@ -54,9 +47,10 @@ struct PhotoCanvas: View {
 
     @ViewBuilder private func coverMarks(_ page: PhotoPage, size: CGSize) -> some View {
         ForEach(Array(page.regions.enumerated()), id: \.element.id) { index, region in
-            AreaMark(area: region, number: index + 1, size: size, onValue: "가림", offValue: "원본") {
-                editor.toggleArea(region.id)
-            }
+            AreaMark(area: region, number: index + 1, size: size, onValue: "가림", offValue: "원본",
+                     toggle: { editor.toggleArea(region.id) },
+                     adjust: { adjust(region.id) },
+                     remove: { editor.removeArea(region.id) })
         }
     }
 
@@ -88,14 +82,15 @@ struct PhotoCanvas: View {
                 .accessibilityHidden(true)
         }
         ForEach(Array(page.keepAreas.enumerated()), id: \.element.id) { index, area in
-            AreaMark(area: area, number: subjects.count + index + 1, size: size, onValue: "남김", offValue: "가림") {
-                editor.toggleArea(area.id)
-            }
+            AreaMark(area: area, number: subjects.count + index + 1, size: size, onValue: "남김", offValue: "가림",
+                     toggle: { editor.toggleArea(area.id) },
+                     adjust: { adjust(area.id) },
+                     remove: { editor.removeArea(area.id) })
         }
     }
 }
 
-/// A tappable outline of a face or drawn area.
+/// An outline of a face or drawn area. Tap to switch it on or off, long-press to resize or delete it.
 private struct AreaMark: View {
     let area: MaskRegion
     let number: Int
@@ -103,6 +98,8 @@ private struct AreaMark: View {
     let onValue: String
     let offValue: String
     let toggle: () -> Void
+    let adjust: () -> Void
+    let remove: () -> Void
 
     var body: some View {
         let rect = area.displayRect(in: size)
@@ -120,37 +117,11 @@ private struct AreaMark: View {
             .contentShape(Rectangle())
         }
         .frame(width: rect.width, height: rect.height)
+        .contextMenu { AreaMenu(adjust: adjust, remove: remove) }
         .position(x: rect.midX, y: rect.midY)
         .accessibilityLabel("영역 \(number)")
         .accessibilityValue(area.active ? onValue : offValue)
-    }
-}
-
-struct ManualMaskOverlay: View {
-    let imageSize: CGSize
-    let add: (MaskRegion) -> Void
-    @GestureState private var draft: CGRect?
-
-    var body: some View {
-        Color.clear.contentShape(Rectangle())
-            .overlay(alignment: .topLeading) {
-                if let draft {
-                    Rectangle().fill(Palette.marker.opacity(0.3))
-                        .overlay(Rectangle().strokeBorder(Palette.marker, lineWidth: 2))
-                        .frame(width: draft.width, height: draft.height)
-                        .position(x: draft.midX, y: draft.midY)
-                        .allowsHitTesting(false)
-                }
-            }
-            .highPriorityGesture(DragGesture(minimumDistance: 0, coordinateSpace: .local)
-                .updating($draft) { value, rect, _ in
-                    rect = CGRect(x: value.startLocation.x, y: value.startLocation.y,
-                                  width: value.translation.width, height: value.translation.height).standardized
-                }
-                .onEnded { value in
-                    if let region = MaskRegion.drawn(from: value.startLocation, to: value.location, in: imageSize) {
-                        add(region)
-                    }
-                })
+        .accessibilityAction(named: "크기·위치 조정", adjust)
+        .accessibilityAction(named: "삭제", remove)
     }
 }

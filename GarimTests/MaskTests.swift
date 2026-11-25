@@ -93,6 +93,92 @@ final class MaskTests: XCTestCase {
         }
     }
 
+    func testMovingAnAreaKeepsItsSizeInsideThePhoto() {
+        let box = CGRect(x: 0.5, y: 0.25, width: 0.25, height: 0.125)
+        XCTAssertEqual(MaskRegion.move(box, by: CGVector(dx: 0.125, dy: 0.25)),
+                       CGRect(x: 0.625, y: 0.5, width: 0.25, height: 0.125))
+        // The photo edges stop it without squeezing it.
+        XCTAssertEqual(MaskRegion.move(box, by: CGVector(dx: 2, dy: 3)), CGRect(x: 0.75, y: 0.875, width: 0.25, height: 0.125))
+        XCTAssertEqual(MaskRegion.move(box, by: CGVector(dx: -1, dy: -1)), CGRect(x: 0, y: 0, width: 0.25, height: 0.125))
+    }
+
+    func testResizingMovesOneCornerAndKeepsTheOppositeOne() {
+        let box = CGRect(x: 0.375, y: 0.375, width: 0.25, height: 0.25)
+        let minimum = CGSize(width: 0.0625, height: 0.0625)
+        func resize(_ corner: MaskRegion.Corner, _ dx: CGFloat, _ dy: CGFloat) -> CGRect {
+            MaskRegion.resize(box, dragging: corner, by: CGVector(dx: dx, dy: dy), minimum: minimum)
+        }
+        XCTAssertEqual(resize(.topLeft, -0.125, -0.125), CGRect(x: 0.25, y: 0.25, width: 0.375, height: 0.375))
+        XCTAssertEqual(resize(.topRight, 0.125, -0.125), CGRect(x: 0.375, y: 0.25, width: 0.375, height: 0.375))
+        XCTAssertEqual(resize(.bottomLeft, -0.125, 0.125), CGRect(x: 0.25, y: 0.375, width: 0.375, height: 0.375))
+        XCTAssertEqual(resize(.bottomRight, 0.125, 0.125), CGRect(x: 0.375, y: 0.375, width: 0.375, height: 0.375))
+        // Dragging past the opposite corner stops at the minimum size.
+        XCTAssertEqual(resize(.topLeft, 0.5, 0.5), CGRect(x: 0.5625, y: 0.5625, width: 0.0625, height: 0.0625))
+        XCTAssertEqual(resize(.bottomRight, -0.5, -0.5), CGRect(x: 0.375, y: 0.375, width: 0.0625, height: 0.0625))
+        // The photo edges stop it.
+        XCTAssertEqual(resize(.bottomRight, 1, 1), CGRect(x: 0.375, y: 0.375, width: 0.625, height: 0.625))
+        XCTAssertEqual(resize(.topLeft, -1, -1), CGRect(x: 0, y: 0, width: 0.625, height: 0.625))
+    }
+
+    func testEditingCanvasGrabsSmallAreasAndKeepsHandlesApart() throws {
+        // A 1000 × 500 photo in a 400 × 400 canvas is drawn 400 × 200, centred.
+        let layout = RegionLayout(photo: CGSize(width: 1000, height: 500), in: CGSize(width: 400, height: 400))
+        XCTAssertEqual(layout.frame, CGRect(x: 0, y: 100, width: 400, height: 200))
+        XCTAssertEqual(layout.fraction(CGSize(width: 40, height: -50)), CGVector(dx: 0.1, dy: -0.25))
+        XCTAssertEqual(layout.photoPoint(CGPoint(x: 40, y: 150)), CGPoint(x: 40, y: 50))
+
+        let big = MaskRegion(box: CGRect(x: 0.125, y: 0.125, width: 0.5, height: 0.75), manual: true)
+        let face = MaskRegion(box: CGRect(x: 0.25, y: 0.375, width: 1.0 / 128, height: 1.0 / 64))
+        XCTAssertEqual(layout.rect(big.box), CGRect(x: 50, y: 125, width: 200, height: 150))
+        let tiny = layout.rect(face.box)
+        XCTAssertEqual(tiny, CGRect(x: 100, y: 175, width: 3.125, height: 3.125))
+        let center = CGPoint(x: tiny.midX, y: tiny.midY)
+        let areas = [big, face]
+
+        // The smallest area under the finger wins, and a tiny one answers within a finger's width.
+        XCTAssertEqual(layout.grab(at: center, areas: areas, selected: nil), .area(face.id))
+        XCTAssertEqual(layout.grab(at: CGPoint(x: center.x + 20, y: center.y), areas: areas, selected: nil), .area(face.id))
+        XCTAssertEqual(layout.grab(at: CGPoint(x: 200, y: 250), areas: areas, selected: nil), .area(big.id))
+        XCTAssertEqual(layout.grab(at: CGPoint(x: 350, y: 150), areas: areas, selected: nil), .empty)
+
+        // A large selected area has its handles on its own corners.
+        XCTAssertEqual(layout.handles(for: big.box).map(\.point),
+                       [CGPoint(x: 50, y: 125), CGPoint(x: 250, y: 125), CGPoint(x: 50, y: 275), CGPoint(x: 250, y: 275)])
+        XCTAssertEqual(layout.grab(at: CGPoint(x: 245, y: 270), areas: areas, selected: big.id), .corner(big.id, .bottomRight))
+        XCTAssertEqual(layout.grab(at: CGPoint(x: 150, y: 200), areas: areas, selected: big.id), .area(big.id))
+
+        // A tiny selected area spreads its handles so every corner and the middle stay reachable.
+        let handles = layout.handles(for: face.box)
+        XCTAssertEqual(handles.map(\.corner), MaskRegion.Corner.allCases)
+        for handle in handles {
+            XCTAssertEqual(layout.grab(at: handle.point, areas: areas, selected: face.id), .corner(face.id, handle.corner))
+            let dx = handle.point.x - center.x, dy = handle.point.y - center.y
+            XCTAssertGreaterThan((dx * dx + dy * dy).squareRoot(), RegionLayout.reach / 2)
+        }
+        XCTAssertEqual(layout.grab(at: center, areas: areas, selected: face.id), .area(face.id))
+
+        // While a corner is dragged the handles keep their touch-down spacing, so the held one follows the finger.
+        let grown = MaskRegion.resize(face.box, dragging: .bottomRight, by: layout.fraction(CGSize(width: 20, height: 10)),
+                                      minimum: layout.minimum)
+        let start = try XCTUnwrap(handles.first { $0.corner == .bottomRight }).point
+        let held = try XCTUnwrap(layout.handles(for: grown, outset: layout.handleOutset(for: face.box))
+            .first { $0.corner == .bottomRight }).point
+        XCTAssertEqual(held.x, start.x + 20, accuracy: 1e-9)
+        XCTAssertEqual(held.y, start.y + 10, accuracy: 1e-9)
+
+        // Handles stay on the canvas even for an area in the photo's corner, and each still answers.
+        let edge = MaskRegion(box: CGRect(x: 0, y: 0, width: 1.0 / 128, height: 1.0 / 64))
+        let inside = layout.bounds.insetBy(dx: RegionLayout.handleMargin, dy: RegionLayout.handleMargin)
+        for handle in layout.handles(for: edge.box) {
+            XCTAssertTrue((inside.minX...inside.maxX).contains(handle.point.x)
+                          && (inside.minY...inside.maxY).contains(handle.point.y))
+            XCTAssertEqual(layout.grab(at: handle.point, areas: [edge], selected: edge.id), .corner(edge.id, handle.corner))
+        }
+
+        XCTAssertTrue(RegionLayout.isTap(CGSize(width: 3, height: 4)))
+        XCTAssertFalse(RegionLayout.isTap(CGSize(width: 6, height: 8)))
+    }
+
     func testPortraitExportAndSelectiveMasking() async throws {
         let width = 96, height = 64
         let engine = PhotoEngine()
@@ -345,6 +431,43 @@ final class BatchEditingTests: XCTestCase {
         editor.remove(ids[0])
         editor.remove(ids[1])
         XCTAssertNil(editor.current)
+    }
+
+    func testAreasCanBeDeletedAndReplacedForTheMode() async throws {
+        let editor = Editor()
+        let photo = try XCTUnwrap(FieldStudy.data)
+        await editor.load([photo], replacing: true) { $0 }
+        let page = try XCTUnwrap(editor.current)
+        let drawn = MaskRegion(box: FieldStudy.plate, manual: true)
+        editor.addArea(drawn)
+        XCTAssertEqual(editor.editableAreas.last, drawn)
+
+        // The full-screen editor hands back moved, added and deleted areas at once.
+        var areas = editor.editableAreas
+        areas[areas.count - 1].box = MaskRegion.move(drawn.box, by: CGVector(dx: -0.25, dy: 0))
+        areas.append(MaskRegion(box: CGRect(x: 0.5, y: 0.0625, width: 0.125, height: 0.125), manual: true))
+        editor.setAreas(areas, page: page.id, mode: .keep)
+        XCTAssertNotEqual(editor.editableAreas, areas, "edits made for the other mode are dropped")
+        editor.setAreas(areas, page: page.id, mode: .cover)
+        XCTAssertEqual(editor.editableAreas, areas)
+        XCTAssertEqual(editor.activeCount, areas.count)
+
+        editor.removeArea(drawn.id)
+        XCTAssertEqual(editor.editableAreas.count, areas.count - 1)
+        XCTAssertFalse(editor.editableAreas.contains { $0.id == drawn.id })
+        XCTAssertEqual(editor.current?.faces, page.faces, "keep mode still knows where the faces were")
+        try await settle(editor)
+
+        // In keep mode the editor changes the drawn areas to keep, never the areas to cover.
+        editor.setMode(.keep)
+        XCTAssertTrue(editor.editableAreas.isEmpty)
+        let keep = MaskRegion(box: CGRect(x: 0.25, y: 0.25, width: 0.25, height: 0.25), manual: true)
+        editor.setAreas([keep], page: page.id, mode: .keep)
+        XCTAssertEqual(editor.current?.keepAreas, [keep])
+        editor.removeArea(keep.id)
+        XCTAssertEqual(editor.current?.keepAreas, [])
+        XCTAssertEqual(editor.current?.regions.count, areas.count - 1)
+        try await settle(editor)
     }
 
     func testSavingCopiesAndEditingAfterBatchSave() async throws {

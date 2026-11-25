@@ -7,12 +7,21 @@ import Vision
 struct MaskRegion: Identifiable, Equatable {
     let id = UUID()
     /// Fractions of the upright image, with the origin at the top left.
-    let box: CGRect
+    var box: CGRect
     /// Covered in cover mode, kept in keep mode.
     var active = true
     var manual = false
 
     static let bounds = CGRect(x: 0, y: 0, width: 1, height: 1)
+    /// Shortest side of a drawn or resized area, in display points.
+    static let minimumSide: CGFloat = 6
+
+    enum Corner: CaseIterable {
+        case topLeft, topRight, bottomLeft, bottomRight
+
+        var isLeft: Bool { self == .topLeft || self == .bottomLeft }
+        var isTop: Bool { self == .topLeft || self == .topRight }
+    }
 
     static func face(_ visionBox: CGRect) -> MaskRegion {
         let expanded = visionBox.insetBy(dx: -visionBox.width * 0.16, dy: -visionBox.height * 0.19)
@@ -26,10 +35,34 @@ struct MaskRegion: Identifiable, Equatable {
         let rect = CGRect(x: min(start.x, end.x), y: min(start.y, end.y),
                           width: abs(end.x - start.x), height: abs(end.y - start.y))
         let clipped = rect.intersection(CGRect(origin: .zero, size: size))
-        guard !clipped.isNull, clipped.width >= 6, clipped.height >= 6 else { return nil }
+        guard !clipped.isNull, clipped.width >= minimumSide, clipped.height >= minimumSide else { return nil }
         return MaskRegion(box: CGRect(x: clipped.minX / size.width, y: clipped.minY / size.height,
                                       width: clipped.width / size.width, height: clipped.height / size.height),
                           manual: true)
+    }
+
+    /// `box` moved by `offset` (fractions of the photo), without leaving the photo.
+    static func move(_ box: CGRect, by offset: CGVector) -> CGRect {
+        CGRect(x: min(max(box.minX + offset.dx, 0), max(0, 1 - box.width)),
+               y: min(max(box.minY + offset.dy, 0), max(0, 1 - box.height)),
+               width: box.width, height: box.height)
+    }
+
+    /// `box` with one corner dragged by `offset` while the opposite corner stays put. The result stays
+    /// inside the photo and keeps at least `minimum` (fractions of the photo) where the photo allows it.
+    static func resize(_ box: CGRect, dragging corner: Corner, by offset: CGVector, minimum: CGSize) -> CGRect {
+        var left = box.minX, top = box.minY, right = box.maxX, bottom = box.maxY
+        if corner.isLeft {
+            left = min(max(left + offset.dx, 0), max(0, right - minimum.width))
+        } else {
+            right = max(min(right + offset.dx, 1), min(1, left + minimum.width))
+        }
+        if corner.isTop {
+            top = min(max(top + offset.dy, 0), max(0, bottom - minimum.height))
+        } else {
+            bottom = max(min(bottom + offset.dy, 1), min(1, top + minimum.height))
+        }
+        return CGRect(x: left, y: top, width: right - left, height: bottom - top)
     }
 
     func displayRect(in size: CGSize) -> CGRect {
@@ -53,6 +86,9 @@ struct PhotoPage: Identifiable {
     let size: CGSize
     /// Detected faces and drawn areas to cover.
     var regions: [MaskRegion]
+    /// Face boxes as they were detected. Keep mode uses them to tell people from objects, so deleting
+    /// or moving a cover area doesn't change who counts as a person.
+    let faces: [CGRect]
     let faceDetectionFailed: Bool
     /// Drawn areas to keep when everything else is covered.
     var keepAreas: [MaskRegion] = []
@@ -200,7 +236,7 @@ actor PhotoEngine {
         let page = PhotoPage(original: data,
                              thumbnail: downscale(image, longestEdge: Self.thumbnailLimit) ?? image,
                              size: CGSize(width: image.width, height: image.height),
-                             regions: regions, faceDetectionFailed: failed)
+                             regions: regions, faces: regions.map(\.box), faceDetectionFailed: failed)
         return OpenedPhoto(page: page, source: image)
     }
 
