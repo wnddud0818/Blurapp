@@ -209,7 +209,6 @@ actor PhotoEngine {
     private let context = CIContext(options: [.cacheIntermediates: false])
     private static let faceSearchLimit = 4096
     static let previewLimit = 1920
-    static let exportLimit = 4096
     static let thumbnailLimit = 240
 
     func open(_ data: Data) throws -> OpenedPhoto {
@@ -285,16 +284,37 @@ actor PhotoEngine {
     }
 
     func jpeg(_ data: Data, plan: MaskPlan) throws -> Data {
-        let input = try decode(data, longestEdge: Self.exportLimit)
+        let readOptions = [kCGImageSourceShouldCache: false] as CFDictionary
+        guard let source = CGImageSourceCreateWithData(data as CFData, readOptions),
+              CGImageSourceGetCount(source) > 0 else { throw PhotoError.unreadable }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let input = CGImageSourceCreateImageAtIndex(source, index, readOptions) else {
+            throw PhotoError.unreadable
+        }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any] ?? [:]
+        let orientation = CGImagePropertyOrientation(rawValue: properties[kCGImagePropertyOrientation] as? UInt32 ?? 1) ?? .up
         let longest = CGFloat(max(input.width, input.height))
         var plan = plan
         plan.resolution = longest / min(CGFloat(Self.previewLimit), longest)
-        let output = try composite(input, plan: plan)
+        let output = try composite(input, plan: plan, orientation: orientation)
         let bytes = NSMutableData()
         guard let destination = CGImageDestinationCreateWithData(bytes, UTType.jpeg.identifier as CFString, 1, nil)
         else { throw PhotoError.render }
-        let options: [CFString: Any] = [kCGImageDestinationLossyCompressionQuality: 0.94]
-        // A new pixel-only image prevents transfer of source EXIF, GPS or an original thumbnail.
+        var options: [CFString: Any] = [
+            kCGImageDestinationLossyCompressionQuality: 1.0,
+            kCGImageDestinationEmbedThumbnail: false,
+            kCGImagePropertyOrientation: orientation.rawValue
+        ]
+        for key in [kCGImagePropertyTIFFDictionary, kCGImagePropertyGPSDictionary,
+                    kCGImagePropertyExifAuxDictionary, kCGImagePropertyDPIWidth, kCGImagePropertyDPIHeight] {
+            options[key] = properties[key]
+        }
+        if var exif = properties[kCGImagePropertyExifDictionary] as? [CFString: Any] {
+            // Opaque vendor notes can contain an unedited preview.
+            exif.removeValue(forKey: kCGImagePropertyExifMakerNote)
+            options[kCGImagePropertyExifDictionary] = exif
+        }
+        // Encode only the edited primary image, without original thumbnails or auxiliary images.
         CGImageDestinationAddImage(destination, output, options as CFDictionary)
         guard CGImageDestinationFinalize(destination) else { throw PhotoError.render }
         return bytes as Data
@@ -337,19 +357,25 @@ actor PhotoEngine {
         return canvas.makeImage()
     }
 
-    private func composite(_ source: CGImage, plan: MaskPlan) throws -> CGImage {
+    private func composite(_ source: CGImage, plan: MaskPlan,
+                           orientation: CGImagePropertyOrientation = .up) throws -> CGImage {
         guard plan.changesPhoto else { return source }
         let raster = CIImage(cgImage: source)
-        let extent = raster.extent
-        let base = raster.composited(over: CIImage(color: .white).cropped(to: extent))
+        // Regions are drawn on the upright preview. Return to the stored axes before encoding
+        // so the original dimensions and EXIF orientation still describe the output pixels.
+        let transform = raster.orientationTransform(forExifOrientation: Int32(orientation.rawValue))
+        let upright = raster.transformed(by: transform)
+        let extent = upright.extent
+        let base = upright.composited(over: CIImage(color: .white).cropped(to: extent))
         let result: CIImage
         switch plan.style.mode {
         case .cover: result = try cover(base, plan: plan)
         case .keep: result = try keep(base, plan: plan)
         }
         try Task.checkCancellation()
-        let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
-        guard let output = context.createCGImage(result, from: extent, format: .RGBA8, colorSpace: colorSpace)
+        let encoded = result.transformed(by: transform.inverted())
+        let colorSpace = source.colorSpace.flatMap { $0.model == .rgb ? $0 : nil } ?? CGColorSpace(name: CGColorSpace.sRGB)!
+        guard let output = context.createCGImage(encoded, from: raster.extent, format: .RGBA8, colorSpace: colorSpace)
         else { throw PhotoError.render }
         return output
     }

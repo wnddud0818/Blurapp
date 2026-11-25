@@ -423,7 +423,7 @@ struct ContentView: View {
                 Text("골라서 남기기에서는 열어서 남길 대상을 확인한 사진만 모두 저장에 들어가요. 아직 확인하지 않은 사진 \(editor.unreviewedCount)장")
                     .font(.footnote.weight(.semibold)).foregroundStyle(Palette.ink)
             }
-            Text("사진 보관함에 새 JPEG로 저장합니다. 긴 변 최대 4,096픽셀.")
+            Text("원본 해상도의 최고 품질 JPEG로 저장합니다. 촬영 정보와 위치 정보도 함께 저장됩니다.")
                 .font(.footnote).foregroundStyle(Palette.secondary)
         }
     }

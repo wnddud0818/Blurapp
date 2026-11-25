@@ -216,9 +216,28 @@ final class MaskTests: XCTestCase {
         let jpeg = try await engine.jpeg(photo.page.original, plan: plan)
         let exported = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
         let properties = try XCTUnwrap(CGImageSourceCopyPropertiesAtIndex(exported, 0, nil) as? [CFString: Any])
-        XCTAssertNil(properties[kCGImagePropertyGPSDictionary])
-        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, height)
-        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, width)
+        let gps = try XCTUnwrap(properties[kCGImagePropertyGPSDictionary] as? [CFString: Any])
+        XCTAssertEqual(try XCTUnwrap(gps[kCGImagePropertyGPSLatitude] as? Double), 37.5, accuracy: 0.00001)
+        let exif = try XCTUnwrap(properties[kCGImagePropertyExifDictionary] as? [CFString: Any])
+        XCTAssertEqual(exif[kCGImagePropertyExifDateTimeOriginal] as? String, "2025:08:16 14:32:10")
+        XCTAssertEqual(properties[kCGImagePropertyOrientation] as? Int, 6)
+        XCTAssertEqual(properties[kCGImagePropertyPixelWidth] as? Int, width)
+        XCTAssertEqual(properties[kCGImagePropertyPixelHeight] as? Int, height)
+        let displayed = CIImage(cgImage: try await engine.previewSource(jpeg))
+        XCTAssertLessThan(variation(sample(displayed, at: 72)), variation(sample(original, at: 72)) / 2)
+        XCTAssertLessThanOrEqual(largestGap(sample(displayed, at: 12), sample(original, at: 12)), 6)
+    }
+
+    func testExportKeepsFullSizeAbovePreviousLimit() async throws {
+        let data = try stripedPhoto(width: 5376, height: 96, orientation: 1)
+        let box = MaskRegion(box: CGRect(x: 0, y: 0, width: 0.5, height: 1))
+        let plan = MaskPlan(style: MaskStyle(mode: .cover, effect: .solid), regions: [box])
+        let jpeg = try await PhotoEngine().jpeg(data, plan: plan)
+        let exported = try XCTUnwrap(CGImageSourceCreateWithData(jpeg as CFData, nil))
+        let image = try XCTUnwrap(CGImageSourceCreateImageAtIndex(exported, 0, nil))
+        XCTAssertEqual(image.width, 5376)
+        XCTAssertEqual(image.height, 96)
+        XCTAssertNil(CGImageSourceCreateThumbnailAtIndex(exported, 0, nil))
     }
 
     func testEveryEffectChangesOnlyTheCoveredArea() async throws {
@@ -428,7 +447,11 @@ final class MaskTests: XCTestCase {
         let destination = try XCTUnwrap(CGImageDestinationCreateWithData(output, UTType.tiff.identifier as CFString, 1, nil))
         var properties: [CFString: Any] = [kCGImagePropertyOrientation: orientation]
         if gps {
-            let location: [CFString: Any] = [kCGImagePropertyGPSLatitude: 37.5, kCGImagePropertyGPSLatitudeRef: "N"]
+            properties[kCGImagePropertyExifDictionary] = [kCGImagePropertyExifDateTimeOriginal: "2025:08:16 14:32:10"]
+            let location: [CFString: Any] = [
+                kCGImagePropertyGPSLatitude: 37.5, kCGImagePropertyGPSLatitudeRef: "N",
+                kCGImagePropertyGPSLongitude: 127.0, kCGImagePropertyGPSLongitudeRef: "E"
+            ]
             properties[kCGImagePropertyGPSDictionary] = location
         }
         CGImageDestinationAddImage(destination, source, properties as CFDictionary)
