@@ -102,6 +102,54 @@ struct RenderedPreview {
     let overlay: CGImage?
 }
 
+enum FaceSearch {
+    /// Pixel rectangles in the upright image, measured from the top left.
+    static func tiles(in size: CGSize) -> [CGRect] {
+        let longest = max(size.width, size.height)
+        let edge = min(1280, max(256, (longest * 0.6).rounded(.up)))
+        guard longest > edge else { return [] }
+
+        func origins(along length: CGFloat) -> [CGFloat] {
+            guard length > edge else { return [0] }
+            let span = length - edge
+            // Space the crops evenly, with at least 20% overlap across each seam.
+            let steps = Int((span / (edge * 0.8)).rounded(.up))
+            return (0...steps).map { (span * CGFloat($0) / CGFloat(steps)).rounded() }
+        }
+
+        let columns = origins(along: size.width)
+        return origins(along: size.height).flatMap { y in
+            columns.map { x in
+                CGRect(x: x, y: y, width: min(edge, size.width), height: min(edge, size.height))
+            }
+        }
+    }
+
+    /// Keep the result in Vision's bottom-left coordinate system until MaskRegion.face adds padding.
+    static func imageBox(_ box: CGRect, in tile: CGRect, imageSize: CGSize) -> CGRect {
+        CGRect(x: (tile.minX + box.minX * tile.width) / imageSize.width,
+               y: (imageSize.height - tile.maxY + box.minY * tile.height) / imageSize.height,
+               width: box.width * tile.width / imageSize.width,
+               height: box.height * tile.height / imageSize.height)
+    }
+
+    static func combinedBoxes(wholeImage: [CGRect], tiles: [CGRect]) -> [CGRect] {
+        var kept = wholeImage
+        func area(_ box: CGRect) -> CGFloat { box.width * box.height }
+        // Prefer a full face over a smaller observation cut by a tile boundary.
+        for box in tiles.sorted(by: { area($0) > area($1) }) where !box.isEmpty {
+            let duplicate = kept.contains { other in
+                let overlap = box.intersection(other)
+                guard !overlap.isEmpty else { return false }
+                let intersection = area(overlap)
+                return intersection >= 0.45 * (area(box) + area(other) - intersection)
+            }
+            if !duplicate { kept.append(box) }
+        }
+        return kept
+    }
+}
+
 enum PhotoError: LocalizedError {
     case unreadable, render, permission
     var errorDescription: String? {
@@ -115,24 +163,38 @@ enum PhotoError: LocalizedError {
 
 actor PhotoEngine {
     private let context = CIContext(options: [.cacheIntermediates: false])
+    private static let faceSearchLimit = 4096
     static let previewLimit = 1920
     static let exportLimit = 4096
     static let thumbnailLimit = 240
 
     func open(_ data: Data) throws -> OpenedPhoto {
         let image = try decode(data, longestEdge: Self.previewLimit)
-        let request = VNDetectFaceRectanglesRequest()
-        let boxes: [CGRect]
-        var failed = false
-        do {
-            try VNImageRequestHandler(cgImage: image, orientation: .up, options: [:]).perform([request])
-            boxes = (request.results ?? []).map(\.boundingBox)
-        } catch {
-            boxes = []
-            failed = true
-        }
         try Task.checkCancellation()
-        let regions = boxes.map(MaskRegion.face)
+        let wholeImageBoxes = try? detectFaces(in: image)
+        try Task.checkCancellation()
+        let detail: CGImage
+        if max(image.width, image.height) == Self.previewLimit {
+            detail = (try? decode(data, longestEdge: Self.faceSearchLimit)) ?? image
+        } else {
+            detail = image
+        }
+
+        let size = CGSize(width: detail.width, height: detail.height)
+        var tileBoxes: [CGRect] = []
+        var failed = wholeImageBoxes == nil
+        for tile in FaceSearch.tiles(in: size) {
+            try Task.checkCancellation()
+            guard let crop = detail.cropping(to: tile), let boxes = try? detectFaces(in: crop) else {
+                failed = true
+                continue
+            }
+            tileBoxes.append(contentsOf: boxes.map { FaceSearch.imageBox($0, in: tile, imageSize: size) })
+        }
+
+        try Task.checkCancellation()
+        let regions = FaceSearch.combinedBoxes(wholeImage: wholeImageBoxes ?? [], tiles: tileBoxes)
+            .map(MaskRegion.face)
             .filter { !$0.box.isEmpty }
             .sorted { $0.box.minX < $1.box.minX }
         let page = PhotoPage(original: data,
@@ -140,6 +202,14 @@ actor PhotoEngine {
                              size: CGSize(width: image.width, height: image.height),
                              regions: regions, faceDetectionFailed: failed)
         return OpenedPhoto(page: page, source: image)
+    }
+
+    private func detectFaces(in image: CGImage) throws -> [CGRect] {
+        try autoreleasepool {
+            let request = VNDetectFaceRectanglesRequest()
+            try VNImageRequestHandler(cgImage: image, orientation: .up, options: [:]).perform([request])
+            return (request.results ?? []).map(\.boundingBox)
+        }
     }
 
     func previewSource(_ data: Data) throws -> CGImage {

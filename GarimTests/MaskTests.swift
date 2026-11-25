@@ -8,6 +8,53 @@ import XCTest
 final class MaskTests: XCTestCase {
     private let ci = CIContext()
 
+    func testDetailTilesCoverSmallFacesAtSeamsAndImageEdges() {
+        for size in [CGSize(width: 4032, height: 3024), CGSize(width: 3024, height: 4032),
+                     CGSize(width: 4096, height: 512), CGSize(width: 960, height: 720)] {
+            let tiles = FaceSearch.tiles(in: size)
+            let image = CGRect(origin: .zero, size: size)
+            XCTAssertLessThanOrEqual(tiles.count, 16)
+            XCTAssertTrue(tiles.allSatisfy { image.contains($0) && $0 == $0.integral })
+            // Center a small face on every crop corner, including seams and outer edges.
+            for tile in tiles {
+                for x in [tile.minX, tile.maxX] {
+                    for y in [tile.minY, tile.maxY] {
+                        let face = CGRect(x: x - 16, y: y - 16, width: 32, height: 32).intersection(image)
+                        XCTAssertTrue(tiles.contains { $0.contains(face) })
+                    }
+                }
+            }
+            XCTAssertEqual(tiles.reduce(CGRect.null) { $0.union($1) }, image)
+        }
+        XCTAssertTrue(FaceSearch.tiles(in: CGSize(width: 160, height: 240)).isEmpty)
+    }
+
+    func testTileFaceMapsToTheSamePortraitPixelsForPreviewAndExport() {
+        let size = CGSize(width: 1024, height: 2048)
+        let tile = CGRect(x: 320, y: 1280, width: 512, height: 512)
+        let local = CGRect(x: 0.125, y: 0.625, width: 0.0625, height: 0.125)
+        let box = FaceSearch.imageBox(local, in: tile, imageSize: size)
+        XCTAssertEqual(box, CGRect(x: 384.0 / 1024, y: 576.0 / 2048,
+                                   width: 32.0 / 1024, height: 64.0 / 2048))
+        let mask = MaskRegion.face(box)
+        let preview = mask.displayRect(in: CGSize(width: 256, height: 512))
+        XCTAssertEqual(preview.midX, 100, accuracy: 0.001)
+        XCTAssertEqual(preview.midY, 360, accuracy: 0.001)
+        XCTAssertTrue(mask.coreImageRect(in: CGRect(origin: .zero, size: size))
+            .contains(CGRect(x: 384, y: 576, width: 32, height: 64)))
+    }
+
+    func testCombiningPassesKeepsNearbyFacesAndRemovesRepeatDetections() {
+        let foreground = CGRect(x: 0.1, y: 0.1, width: 0.3, height: 0.4)
+        let distant = CGRect(x: 0.7, y: 0.8, width: 0.03, height: 0.04)
+        let neighbor = distant.offsetBy(dx: 0.024, dy: 0)
+        let boxes = FaceSearch.combinedBoxes(wholeImage: [foreground], tiles: [
+            foreground.offsetBy(dx: 0.01, dy: 0), distant.insetBy(dx: 0.002, dy: 0.002), distant, neighbor
+        ])
+        XCTAssertEqual(boxes.count, 3)
+        for face in [foreground, distant, neighbor] { XCTAssertTrue(boxes.contains(face)) }
+    }
+
     func testTopFaceRemainsAtTopAcrossCoordinateSystems() {
         let region = MaskRegion.face(CGRect(x: 0.1, y: 0.8, width: 0.2, height: 0.2))
         XCTAssertEqual(region.box.minY, 0, accuracy: 0.0001)
