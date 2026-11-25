@@ -5,8 +5,11 @@ name: Release IPA
 #   없으면 고른 브랜치의 커밋을 빌드하고, 빌드가 성공한 뒤에 태그와 릴리즈를 만들어 IPA를 붙입니다.
 #   릴리즈가 이미 있으면 IPA만 올리거나 바꿉니다.
 # - GitHub에서 릴리즈를 게시하면 그 태그를 빌드해 IPA를 붙입니다. IPA가 이미 있으면 러너 없이 건너뜁니다.
-# 일반 푸시에는 실행되지 않습니다.
+# - 새 릴리즈의 노트는 notes 입력, .github/release-notes/<태그>.md, 커밋 목록 자동 생성 순으로 정합니다.
 on:
+  # v1.3.0을 이 브랜치에서 한 번 빌드하기 위한 임시 트리거. 릴리즈를 만든 뒤 지웁니다.
+  push:
+    branches: [claude/admiring-mendel-nbi5zu]
   release:
     types: [published]
   workflow_dispatch:
@@ -35,12 +38,12 @@ concurrency:
 jobs:
   ipa:
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      github.event_name != 'release' ||
       !contains(github.event.release.assets.*.name, format('Garim-{0}-unsigned.ipa', github.event.release.tag_name))
     runs-on: ${{ inputs.runner || 'macos-26' }}
     timeout-minutes: 40
     env:
-      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+      TAG: ${{ github.event.release.tag_name || inputs.tag || 'v1.3.0' }}
       GH_TOKEN: ${{ github.token }}
       GH_REPO: ${{ github.repository }}
     steps:
@@ -142,6 +145,9 @@ jobs:
             fi
             gh release upload "$TAG" "$IPA" --clobber
           else
+            if [ -z "$NOTES" ] && [ -f ".github/release-notes/$TAG.md" ]; then
+              NOTES="$(cat ".github/release-notes/$TAG.md")"
+            fi
             NOTES_FILE="$RUNNER_TEMP/notes.md"
             {
               if [ -n "$NOTES" ]; then printf '%s\n\n' "$NOTES"; fi
