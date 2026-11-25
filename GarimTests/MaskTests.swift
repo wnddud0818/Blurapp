@@ -357,6 +357,63 @@ final class MaskTests: XCTestCase {
         XCTAssertNil(map.subject(at: CGPoint(x: 0.5, y: 0.5)))
     }
 
+    func testVideoTrackInterpolatesOnlyInsideTheTrackedInterval() throws {
+        let a = CGRect(x: 0.1, y: 0.3, width: 0.2, height: 0.2)
+        let b = a.offsetBy(dx: 0.1, dy: 0)
+        let track = VideoPersonTrack(points: [
+            VideoTrackPoint(time: 1, box: a), VideoTrackPoint(time: 2, box: b)
+        ])
+        XCTAssertEqual(track.target(at: 1), a)
+        XCTAssertEqual(try XCTUnwrap(track.target(at: 1.5)).midX, (a.midX + b.midX) / 2, accuracy: 0.00001)
+        XCTAssertNil(track.target(at: 0.9))
+        XCTAssertNil(track.target(at: 2.1))
+        XCTAssertNil(VideoPersonTrack(points: []).target(at: 1))
+    }
+
+    func testVideoSelectionMatchesGeometryAcrossChangingDetectionOrder() {
+        let selected = CGRect(x: 0.1, y: 0.4, width: 0.25, height: 0.35)
+        let stranger = selected.offsetBy(dx: 0.5, dy: 0)
+        XCTAssertEqual(VideoPersonTrack.match(selected, among: [stranger, selected]), 1)
+        XCTAssertEqual(VideoPersonTrack.match(selected, among: [selected, stranger]), 0)
+        XCTAssertNil(VideoPersonTrack.match(selected, among: [stranger]))
+        XCTAssertNil(VideoPersonTrack.match(selected, among: [selected, selected.offsetBy(dx: 0.01, dy: 0)]))
+        XCTAssertNil(VideoPersonTrack.match(nil, among: [selected]))
+    }
+
+    func testVideoCoversOtherFacesAndCoversAllDetectedFacesAfterLoss() throws {
+        let data = try stripedPhoto(width: 160, height: 120, orientation: 1)
+        let image = try XCTUnwrap(CIImage(data: data))
+        let left = CGRect(x: 0.05, y: 0.1, width: 0.35, height: 0.6)
+        let right = left.offsetBy(dx: 0.55, dy: 0)
+        let kept = CGRect(x: 16, y: 40, width: 40, height: 1)
+        let covered = CGRect(x: 104, y: 40, width: 40, height: 1)
+        let background = CGRect(x: 40, y: 110, width: 80, height: 1)
+        let output = VideoRenderer.coverOtherFaces(in: image, faces: [right, left], target: left)
+        XCTAssertEqual(pixels(output, in: kept), pixels(image, in: kept))
+        XCTAssertEqual(pixels(output, in: background), pixels(image, in: background))
+        XCTAssertGreaterThan(difference(pixels(output, in: covered), pixels(image, in: covered)), 40 * 20)
+        let lost = VideoRenderer.coverOtherFaces(in: image, faces: [left, right], target: nil)
+        XCTAssertGreaterThan(difference(pixels(lost, in: kept), pixels(image, in: kept)), 40 * 20)
+    }
+
+    func testVideoKeepsOnlySilhouettePixelsAndCoversWholeFrameAfterLoss() throws {
+        let data = try stripedPhoto(width: 160, height: 120, orientation: 1)
+        let image = try XCTUnwrap(CIImage(data: data))
+        // L-shaped silhouette. The corner of its bounding box must still be covered.
+        let white = CIImage(color: .white)
+        let black = CIImage(color: .black).cropped(to: image.extent)
+        let mask = white.cropped(to: CGRect(x: 8, y: 10, width: 40, height: 90))
+            .composited(over: white.cropped(to: CGRect(x: 8, y: 10, width: 120, height: 30)))
+            .composited(over: black)
+        let inside = CGRect(x: 12, y: 60, width: 30, height: 1)
+        let outside = CGRect(x: 62, y: 60, width: 50, height: 1)
+        let result = VideoRenderer.keepPerson(in: image, mask: mask)
+        XCTAssertLessThanOrEqual(largestGap(pixels(result, in: inside), pixels(image, in: inside)), 2)
+        XCTAssertGreaterThan(difference(pixels(result, in: outside), pixels(image, in: outside)), 50 * 20)
+        let lost = VideoRenderer.keepPerson(in: image, mask: nil)
+        XCTAssertGreaterThan(difference(pixels(lost, in: inside), pixels(image, in: inside)), 30 * 20)
+    }
+
     // MARK: - Helpers
 
     /// A gray photo with one-pixel vertical stripes that exposes any blur or cell averaging.

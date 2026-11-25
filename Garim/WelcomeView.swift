@@ -1,3 +1,4 @@
+import PhotosUI
 import SwiftUI
 
 /// Cropped from the Library of Congress negative fsa.8b27245.
@@ -10,6 +11,7 @@ enum FieldStudy {
 struct WelcomeView: View {
     let columns: Bool
     let limit: Int
+    @Binding var video: PhotosPickerItem?
     let choosePhoto: () -> Void
     let openSample: () -> Void
     @State private var masked = true
@@ -23,7 +25,7 @@ struct WelcomeView: View {
                         Text("모자이크").font(.system(size: titleSize, weight: .black)).tracking(-4)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
-                        Text("사진 편집기").font(.subheadline.weight(.medium))
+                        Text("사진·동영상 편집기").font(.subheadline.weight(.medium))
                     }
                     Rectangle().frame(height: 2)
                     if columns {
@@ -78,12 +80,18 @@ struct WelcomeView: View {
 
     private var actions: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("내 사진 편집").font(.title2.bold())
+            Text("내 사진·동영상 편집").font(.title2.bold())
             Text("얼굴이나 원하는 부분을 가립니다.\n한 번에 사진 \(limit)장까지 선택하세요.")
                 .font(.subheadline).foregroundStyle(Palette.secondary).fixedSize(horizontal: false, vertical: true)
             Button(action: choosePhoto) {
                 PrimaryLabel(title: "사진 선택하기", symbol: "photo.on.rectangle")
             }.buttonStyle(.plain)
+            PhotosPicker(selection: $video, matching: .videos, preferredItemEncoding: .current) {
+                Label("동영상 선택하기", systemImage: "film")
+                    .font(.headline).frame(maxWidth: .infinity, minHeight: 50)
+                    .overlay { RoundedRectangle(cornerRadius: 8).strokeBorder(Palette.line) }
+            }
+            .buttonStyle(.plain)
             Button(action: openSample) {
                 Text("예시 사진으로 연습").font(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44)
