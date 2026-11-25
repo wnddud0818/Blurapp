@@ -186,7 +186,7 @@ struct ContentView: View {
 
     private var editorHeader: some View {
         HStack {
-            Text("가림").font(.title2.weight(.black))
+            Text("모자이크").font(.title2.weight(.black))
             Text("\((editor.currentIndex ?? 0) + 1) / \(editor.pages.count)")
                 .font(.caption.monospacedDigit()).foregroundStyle(Palette.secondary)
             Spacer()

@@ -156,7 +156,7 @@ enum PhotoError: LocalizedError {
         switch self {
         case .unreadable: return "사진을 열 수 없어요. 기기에 내려받은 다른 사진을 선택해 주세요."
         case .render: return "사진을 처리하지 못했어요. 다시 시도해 주세요."
-        case .permission: return "설정에서 가림의 사진 추가 권한을 허용한 뒤 다시 저장해 주세요."
+        case .permission: return "설정에서 모자이크의 사진 추가 권한을 허용한 뒤 다시 저장해 주세요."
         }
     }
 }

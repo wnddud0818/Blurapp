@@ -399,7 +399,7 @@ final class Editor: ObservableObject {
                 try await PHPhotoLibrary.shared().performChanges {
                     let request = PHAssetCreationRequest.forAsset()
                     let options = PHAssetResourceCreationOptions()
-                    options.originalFilename = "Garim-\(UUID().uuidString).jpg"
+                    options.originalFilename = "모자이크-\(UUID().uuidString).jpg"
                     request.addResource(with: .photo, data: data, options: options)
                 }
                 if let index = pages.firstIndex(where: { $0.id == id }) { pages[index].saved = true }

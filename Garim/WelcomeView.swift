@@ -20,7 +20,7 @@ struct WelcomeView: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     HStack(alignment: .lastTextBaseline) {
-                        Text("가림").font(.system(size: titleSize, weight: .black)).tracking(-4)
+                        Text("모자이크").font(.system(size: titleSize, weight: .black)).tracking(-4)
                             .accessibilityAddTraits(.isHeader)
                         Spacer()
                         Text("사진 편집기").font(.subheadline.weight(.medium))
